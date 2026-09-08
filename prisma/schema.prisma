@@ -23,6 +23,7 @@ model Sales {
   targets Target[]
   entries DailyEntry[]
 
+  @@unique([storeId, nama])
   @@index([storeId, aktif])
 }
 
@@ -35,28 +36,98 @@ enum Kategori {
 }
 
 model Target {
-  id       Int       @id @default(autoincrement())
+  id       Int      @id @default(autoincrement())
   salesId  Int
-  sales    Sales     @relation(fields: [salesId], references: [id])
+  sales    Sales    @relation(fields: [salesId], references: [id])
   kategori Kategori
   bulan    Int
   tahun    Int
-  nilai    Decimal   @db.Decimal(15, 2)
+  nilai    Decimal  @db.Decimal(15, 2)
 
   @@unique([salesId, kategori, bulan, tahun])
   @@index([bulan, tahun])
 }
 
 model DailyEntry {
-  id        Int       @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   salesId   Int
-  sales     Sales     @relation(fields: [salesId], references: [id])
+  sales     Sales    @relation(fields: [salesId], references: [id])
   kategori  Kategori
   tanggal   DateTime
-  nilaiMtd  Decimal   @db.Decimal(15, 2)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  nilaiMtd  Decimal  @db.Decimal(15, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@index([salesId, kategori, tanggal])
   @@unique([salesId, kategori, tanggal])
+  @@index([salesId, kategori, tanggal])
+}
+
+model ImportBatch {
+  id             Int                @id @default(autoincrement())
+  fileName       String
+  fileType       String             @db.VarChar(12)
+  rowCount       Int
+  insertedCount  Int
+  periodStart    DateTime?
+  periodEnd      DateTime?
+  createdAt      DateTime           @default(now())
+  transactions   SalesTransaction[]
+  reportDatasets ReportDataset[]
+
+  @@index([createdAt])
+}
+
+model SalesTransaction {
+  id                     Int         @id @default(autoincrement())
+  importBatchId          Int
+  importBatch            ImportBatch @relation(fields: [importBatchId], references: [id])
+  fingerprint            String      @unique @db.Char(64)
+  salesOrg               String?     @db.VarChar(40)
+  salesOrgDesc           String?     @db.VarChar(160)
+  siteCode               String      @db.VarChar(40)
+  siteDesc               String      @db.VarChar(180)
+  salesCode              String?     @db.VarChar(40)
+  salesName              String      @db.VarChar(140)
+  posNumber              String?     @db.VarChar(60)
+  orderDate              DateTime
+  week                   Int?
+  itemGroup              String?     @db.VarChar(60)
+  itemGroupDesc          String?     @db.VarChar(180)
+  brandName              String      @db.VarChar(100)
+  articleCode            String?     @db.VarChar(60)
+  articleDescription     String      @db.VarChar(220)
+  quantity               Int
+  price                  Decimal     @db.Decimal(18, 2)
+  discount               Decimal     @db.Decimal(18, 2)
+  totalNettAmountWithTax Decimal     @db.Decimal(18, 2)
+  totalNettAmountExcTax  Decimal     @db.Decimal(18, 2)
+  category               String      @db.VarChar(80)
+  category2              String?     @db.VarChar(80)
+  businessUnit           String?     @db.VarChar(80)
+  salesLeader            String?     @db.VarChar(140)
+  territorySalesHead     String?     @db.VarChar(140)
+
+  @@index([siteCode, orderDate])
+  @@index([siteCode, salesName, orderDate])
+  @@index([siteCode, category, orderDate])
+  @@index([siteCode, brandName, orderDate])
+  @@index([importBatchId])
+}
+
+model ReportDataset {
+  id            Int         @id @default(autoincrement())
+  importBatchId Int
+  importBatch   ImportBatch @relation(fields: [importBatchId], references: [id])
+  storeCode     String      @db.VarChar(40)
+  storeName     String      @db.VarChar(180)
+  month         Int
+  year          Int
+  sourceFile    String
+  config        Json
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([storeCode, month, year])
+  @@index([month, year])
+  @@index([importBatchId])
 }

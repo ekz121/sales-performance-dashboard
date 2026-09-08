@@ -1,7 +1,13 @@
 node_modules
 .next
-.env
-.env.local
+.env*
+!.env.example
 coverage
 *.log
 *.tsbuildinfo
+
+# Data operasional dan bahan brief tetap lokal; aplikasi memakai MySQL saat runtime.
+*.xlsx
+*.xls
+*.csv
+/revisi/

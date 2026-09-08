@@ -2,6 +2,8 @@
 
 Panduan ini ditulis untuk pengguna yang belum pernah menjalankan aplikasi web. Ikuti urutannya dari atas sampai bawah dan jangan melompati langkah.
 
+Aplikasi **tidak perlu diletakkan di `htdocs`**. Kode dijalankan oleh Node.js/Next.js dari folder proyek. XAMPP dipakai untuk MySQL; Apache hanya diperlukan jika Anda ingin membuka phpMyAdmin.
+
 ## 1. Yang perlu diinstal
 
 Siapkan komputer Windows dan koneksi internet, lalu instal:
@@ -116,8 +118,11 @@ Jangan tutup jendela Command Prompt tersebut selama aplikasi dipakai. Buka brows
 
 - Dashboard: `http://localhost:3000/dashboard`
 - Admin: `http://localhost:3000/admin`
+- Import Excel/CSV dan rollback: `http://localhost:3000/admin/import`
+- CRUD transaksi: `http://localhost:3000/admin/transactions`
+- CRUD target report: `http://localhost:3000/admin/report-targets`
 
-Pada dashboard, pilih **Agustus 2026** untuk melihat data seed. Bulan lain kosong sampai Anda memasukkan Target dan Daily Entry untuk bulan itu.
+Gunakan alamat `localhost` di atas. Dashboard analytics akan memilih periode data transaksi terbaru dari MySQL. Jika target suatu periode belum pernah diimpor, nilai actual tetap tampil dan dashboard memberi penanda bahwa target periode itu belum tersedia.
 
 Login admin mengikuti isi `.env`. Dengan contoh di atas:
 
@@ -128,26 +133,28 @@ Ganti password tersebut sebelum aplikasi dipakai sungguhan.
 
 ## 8. Cara mengisi data
 
-Urutan yang paling aman adalah:
+Untuk data master dalam jumlah besar, gunakan alur berikut:
 
-1. Buka halaman Admin.
-2. Buat atau periksa nama **Sales**.
-3. Isi **Target** untuk setiap sales, kategori, bulan, dan tahun.
-4. Isi **Daily Entry** berupa nilai MTD akumulatif pada tanggal tersebut.
-5. Buka Dashboard dan pilih bulan serta tahun yang sama.
+1. Login ke halaman Admin.
+2. Buka **Import Excel / CSV**.
+3. Pilih file `.xlsx` atau `.csv` dengan format master sales.
+4. Klik **Import ke MySQL** dan tunggu ringkasan jumlah baris.
+5. Buka Dashboard, lalu pilih toko dan periode yang diimpor.
 
-Daily Entry bukan penjualan satu hari. Contoh: pencapaian Device Ahmad sampai tanggal 25 adalah Rp365.658.560, maka angka yang dimasukkan adalah seluruh akumulasi Rp365.658.560. Pada tanggal 26, buat entry baru berisi total akumulasi sampai tanggal 26.
+File tidak dipakai langsung oleh dashboard. File hanya dibaca saat proses import; sesudah itu transaksi dan konfigurasi report tersimpan di MySQL. Mengimpor file yang sama kembali aman karena transaksi yang sama dideteksi sebagai duplikat.
 
-Dashboard membaca database ulang setiap 10 detik. Tombol **Segarkan** dapat dipakai jika ingin memperbarui saat itu juga.
+Halaman `/admin` adalah admin analytics terpadu. Lima menunya sama dengan dashboard: Perform Dashboard, Sales by Brand, Operator, Racing, dan Produk Fokus. Input actual manual, edit/hapus transaksi, serta target yang relevan semuanya menulis ke tabel MySQL yang dibaca dashboard. Master Store dan Sales otomatis bertambah saat file diimpor.
 
-## 9. Mengekspor laporan Excel
+## 9. Memakai dashboard analytics
 
 1. Buka Dashboard.
-2. Pilih bulan dan tahun yang ingin dilaporkan.
-3. Tunggu tabel dan tiga grafik selesai tampil.
-4. Klik **Export Excel**.
+2. Pilih toko, bulan, dan tahun.
+3. Pilih menu **Perform Dashboard**, **Sales by Brand**, **Operator**, **Racing**, atau **Produk Fokus** di sidebar kiri.
+4. Klik tombol panah di atas sidebar untuk mengecilkan sidebar menjadi ikon saja; area konten akan menyesuaikan otomatis.
+5. Gunakan **Sampai Tanggal** untuk mereproduksi snapshot tertentu (contoh: gambar brief memakai 20 Agustus 2026).
+6. Perubahan dari Admin dikirim lintas-tab segera; polling MySQL setiap 5 detik menjadi cadangan.
 
-File hanya berisi periode yang dipilih. Di dalamnya tersedia tabel, ringkasan, tiga grafik visual, ringkasan kategori, dan panduan rumus.
+Singkatan angka: `M` berarti miliar, `jt` berarti juta, dan `rb` berarti ribu. Arahkan pointer ke angka/grafik untuk melihat nilai Rupiah lengkap bila tersedia.
 
 ## 10. Cara menghentikan dan menjalankan kembali
 
@@ -201,11 +208,17 @@ Next.js biasanya menawarkan port lain seperti 3001. Buka alamat yang tertulis di
 
 ### Dashboard kosong
 
-Pilih Agustus 2026. Untuk bulan lain, masukkan Target dan Daily Entry pada bulan/tahun yang sama melalui Admin.
+Pastikan MySQL berwarna hijau di XAMPP. Setelah itu buka `/admin/import`, periksa bahwa riwayat import ada, lalu pilih toko dan periode yang sama pada dashboard. Data contoh M221 tersedia pada Agustus 2026; master Kalimantan tersedia pada September 2026.
 
 ### Perubahan admin belum muncul
 
 Tunggu maksimal 10 detik atau klik **Segarkan**. Pastikan input menggunakan periode yang sama dengan filter dashboard.
+
+### `Unexpected end of JSON input`
+
+Error ini biasanya muncul ketika API gagal karena MySQL mati atau konfigurasi database salah, lalu browser menerima respons kosong. Versi aplikasi ini sudah menampilkan pesan API yang aman, tetapi sumber masalah tetap harus diperbaiki: hidupkan MySQL dan pastikan `DATABASE_URL` pada `.env` benar.
+
+Setelah MySQL menyala, hentikan aplikasi dengan `Ctrl + C`, jalankan kembali `npm run dev`, kemudian muat ulang `http://localhost:3000/dashboard`.
 
 ### Ingin mengulang data seed
 

@@ -17,6 +17,7 @@ import {
   Users,
 } from "lucide-react";
 import { CATEGORIES, CATEGORY_LABELS, type Category } from "@/lib/constants";
+import { apiFetch } from "@/lib/client-api";
 
 type Store = { id: number; nama: string; kode: string };
 type Sales = {
@@ -46,23 +47,28 @@ type EntryRow = {
 type Tab = "sales" | "targets" | "entries";
 
 const rupiah = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 });
-const fetcher = async (url: string) => {
-  const response = await fetch(url, { cache: "no-store" });
-  if (response.status === 401) window.location.href = "/admin/login";
-  if (!response.ok)
-    throw new Error((await response.json()).message || "Gagal memuat data");
-  return response.json();
-};
+async function fetcher<T>(url: string): Promise<T> {
+  try {
+    return await apiFetch<T>(url, { cache: "no-store" });
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "status" in error &&
+      error.status === 401
+    ) {
+      window.location.href = "/admin/login";
+    }
+    throw error;
+  }
+}
 
 async function request(url: string, method: string, body?: unknown) {
-  const response = await fetch(url, {
+  return apiFetch<unknown>(url, {
     method,
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.message || "Aksi gagal");
-  return result;
 }
 
 function Field({
@@ -362,12 +368,15 @@ export function AdminClient() {
             <p className="text-xs font-bold uppercase tracking-widest text-brand-600">
               Erafone & More
             </p>
-            <h1 className="mt-1 text-xl font-bold">Admin Data Sales</h1>
+            <h1 className="mt-1 text-xl font-bold">Admin Data Manual</h1>
             <p className="mt-1 text-xs text-stone-500">
-              Kelola sumber data yang langsung dibaca dashboard.
+              Sales, Target, dan Daily Entry lama. Untuk dashboard analytics gunakan menu Transaksi dan Target Report.
             </p>
           </div>
           <div className="flex gap-2">
+            <Link href="/admin/import" className="btn-primary">
+              <Database size={15} /> Import Excel/CSV
+            </Link>
             <Link href="/dashboard" target="_blank" className="btn-secondary">
               <ExternalLink size={15} /> Buka Dashboard
             </Link>

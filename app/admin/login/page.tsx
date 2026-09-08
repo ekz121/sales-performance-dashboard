@@ -1,31 +1,46 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
 import { LockKeyhole } from "lucide-react";
+import { apiFetch } from "@/lib/client-api";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setLoading(true); setError("");
+    setLoading(true);
+    setError("");
     const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: form.get("username"), password: form.get("password") }) });
-    const result = await response.json();
-    setLoading(false);
-    if (!response.ok) return setError(result.message);
-    const nextPath = new URLSearchParams(window.location.search).get("next");
-    router.replace(nextPath?.startsWith("/admin") ? nextPath : "/admin");
-    router.refresh();
+    try {
+      await apiFetch<{ ok: boolean }>("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: form.get("username"),
+          password: form.get("password"),
+        }),
+      });
+      const nextPath = new URLSearchParams(window.location.search).get("next");
+      window.location.replace(nextPath?.startsWith("/admin") ? nextPath : "/admin");
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Login gagal.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
     <main className="grid min-h-screen place-items-center bg-gradient-to-br from-stone-100 via-white to-orange-50 p-5">
       <section className="card w-full max-w-md p-7">
-        <div className="mb-6 flex items-center gap-3"><span className="rounded-xl bg-brand-600 p-3 text-white"><LockKeyhole /></span><div><h1 className="text-xl font-bold">Login Admin</h1><p className="text-xs text-stone-500">Gunakan akun tunggal dari file environment.</p></div></div>
+        <div className="mb-6 flex items-center gap-3">
+          <span className="rounded-xl bg-brand-600 p-3 text-white"><LockKeyhole /></span>
+          <div>
+            <h1 className="text-xl font-bold">Login Admin</h1>
+            <p className="text-xs text-stone-500">Gunakan akun tunggal dari file environment.</p>
+          </div>
+        </div>
         <form onSubmit={submit} className="space-y-4">
           <label><span className="label">Username</span><input className="field" name="username" autoComplete="username" required /></label>
           <label><span className="label">Password</span><input className="field" type="password" name="password" autoComplete="current-password" required /></label>

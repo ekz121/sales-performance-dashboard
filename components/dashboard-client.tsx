@@ -40,6 +40,7 @@ import {
 } from "@/lib/constants";
 import { exportDashboardToExcel } from "@/lib/export-excel";
 import { DashboardGuide } from "@/components/dashboard-guide";
+import { apiFetch } from "@/lib/client-api";
 
 const MONTHS = [
   "Januari",
@@ -81,12 +82,8 @@ const PERSON_BLOCK_STYLES = [
     line: "[&>td]:border-cyan-400",
   },
 ];
-const fetcher = async (url: string) => {
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok)
-    throw new Error((await response.json()).message || "Gagal memuat data");
-  return response.json();
-};
+const fetcher = (url: string) =>
+  apiFetch<DashboardData>(url, { cache: "no-store" });
 
 const rupiah = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 });
 const compact = new Intl.NumberFormat("id-ID", {

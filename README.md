@@ -1,6 +1,8 @@
 # Erafone & More Sales Performance Dashboard
 Dashboard untuk melihat target, MTD, proyeksi akhir bulan, achievement, gap, kontribusi kategori, dan growth sales. Dashboard berada di `/dashboard`, sedangkan input dan edit data berada di `/admin`.
 
+Aplikasi ini adalah aplikasi Next.js, jadi **tidak perlu dipindahkan ke `htdocs`**. XAMPP hanya diperlukan untuk menjalankan MySQL/MariaDB (dan Apache bila ingin memakai phpMyAdmin).
+
 > Baru pertama kali memakai aplikasi? Ikuti [PANDUAN-LOCALHOST.md](./PANDUAN-LOCALHOST.md) dari langkah pertama tanpa dilewati.
 
 > Ingin memasangnya secara online gratis? Ikuti [DEPLOY-GRATIS.md](./DEPLOY-GRATIS.md).
@@ -17,7 +19,16 @@ npm run prisma:seed
 npm run dev
 ```
 
-Buka `http://localhost:3000/dashboard`, lalu pilih **Agustus 2026** untuk melihat data awal. Login admin berada di `http://localhost:3000/admin`.
+Alamat utama:
+
+- Dashboard analytics: `http://localhost:3000/dashboard`
+- Login admin: `http://localhost:3000/admin`
+- Import Excel/CSV dan rollback batch: `http://localhost:3000/admin/import`
+- Admin terpadu lima menu + Master Store: `http://localhost:3000/admin`
+- CRUD transaksi tabel lengkap: `http://localhost:3000/admin/transactions`
+- CRUD target tabel lengkap: `http://localhost:3000/admin/report-targets`
+
+File Excel/CSV hanya menjadi sumber impor. Setelah impor selesai, seluruh transaksi, target report, riwayat batch, filter, dan perhitungan dashboard dibaca dari MySQL.
 
 Jangan pernah mengunggah file `.env` karena berisi akses database dan akun admin.
 
@@ -59,4 +70,18 @@ npx tsc --noEmit
 npm run build
 ```
 
-Bulk upload Excel/CSV tidak disertakan karena ditandai opsional; fitur inti CRUD dan kalkulasi tidak bergantung padanya.
+## Format impor Excel/CSV
+
+Halaman `/admin/import` menerima `.xlsx` dan `.csv` dengan format master sales. Kolom utamanya mencakup `sales_org`, `site_code`, `sales_code`, `order_date`, `brand_name`, `article_code`, `quantity`, `total_nett_amount_with_tax`, `total_nett_amount_exc_tax`, `CAT`, `CAT 2`, dan kolom master lain yang tersedia.
+
+Workbook report seperti `REPORT M221 AGUSTUS 2026 UPDATE.xlsx` juga dapat diimpor. Selain transaksi pada sheet `MASTER`, aplikasi menyimpan konfigurasi target report yang dikenali ke MySQL. Baris transaksi dideduplikasi menggunakan fingerprint sehingga impor ulang tidak menggandakan omzet.
+
+Urutan pemakaian:
+
+1. Hidupkan MySQL di XAMPP.
+2. Jalankan `npm run dev` dari folder proyek.
+3. Login di `/admin`, lalu buka **Import Excel / CSV**.
+4. Unggah file dan tunggu ringkasan hasil impor.
+5. Buka `/dashboard`, pilih toko, bulan, tahun, dan tanggal snapshot yang sesuai.
+6. Kelola actual dan target kelima menu langsung melalui `/admin`; tampilan tabel lengkap tetap tersedia di `/admin/transactions` dan `/admin/report-targets`.
+7. Hapus seluruh batch yang salah melalui riwayat import. Master Store/Sales otomatis tersinkron dari baris yang diimpor.
