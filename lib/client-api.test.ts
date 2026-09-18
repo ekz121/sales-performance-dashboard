@@ -4,7 +4,9 @@ import { readJsonResponse } from "./client-api";
 describe("readJsonResponse", () => {
   it("membaca response JSON yang valid", async () => {
     const response = Response.json({ ok: true });
-    await expect(readJsonResponse<{ ok: boolean }>(response)).resolves.toEqual({ ok: true });
+    await expect(readJsonResponse<{ ok: boolean }>(response)).resolves.toEqual({
+      ok: true,
+    });
   });
 
   it("mengubah body kosong menjadi pesan yang mudah dipahami", async () => {
@@ -24,7 +26,27 @@ describe("readJsonResponse", () => {
   });
 
   it("menggunakan pesan JSON dari API gagal", async () => {
-    const response = Response.json({ message: "Data tidak valid" }, { status: 400 });
-    await expect(readJsonResponse(response)).rejects.toThrow("Data tidak valid");
+    const response = Response.json(
+      { message: "Data tidak valid" },
+      { status: 400 },
+    );
+    await expect(readJsonResponse(response)).rejects.toThrow(
+      "Data tidak valid",
+    );
+  });
+
+  it("mempertahankan status agar UI dapat membedakan setup dan server gagal", async () => {
+    const response = Response.json(
+      {
+        code: "ANALYTICS_SETUP_REQUIRED",
+        message: "Import data terlebih dahulu",
+      },
+      { status: 409 },
+    );
+    await expect(readJsonResponse(response)).rejects.toMatchObject({
+      name: "ApiResponseError",
+      status: 409,
+      message: "Import data terlebih dahulu",
+    });
   });
 });
