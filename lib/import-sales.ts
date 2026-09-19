@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { Readable } from "node:stream";
 import ExcelJS from "exceljs";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
@@ -15,6 +16,15 @@ const REQUIRED_HEADERS = [
   "total_nett_amount_exc_tax",
   "cat",
 ] as const;
+
+const INSERT_CHUNK_SIZE = 2_500;
+
+export class ImportValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ImportValidationError";
+  }
+}
 
 const INDONESIAN_MONTHS: Record<string, number> = {
   JANUARI: 1,
@@ -48,7 +58,7 @@ export type ReportConfig = {
 };
 
 export type ImportResult = {
-  batchId: number;
+  batchId: number | null;
   fileName: string;
   detectedType: "master" | "report";
   readRows: number;
@@ -112,7 +122,26 @@ function normalizeHeader(value: unknown) {
   return textValue(value)
     .replace(/^\uFEFF/, "")
     .trim()
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/[\s./-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "");
+}
+
+function requiredNumber(value: unknown): number | null {
+  if (typeof value === "object" && value && "result" in value) {
+    return requiredNumber(value.result);
+  }
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const raw = textValue(value);
+  if (!raw) return null;
+  const normalized = raw
+    .replace(/\s/g, "")
+    .replace(/[^0-9,.-]/g, "")
+    .replace(/,(?=\d{3}(?:\D|$))/g, "")
+    .replace(",", ".");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function parseCsv(source: string): SheetRow[] {
@@ -153,37 +182,88 @@ function parseCsv(source: string): SheetRow[] {
   return rows;
 }
 
-function worksheetRows(sheet: ExcelJS.Worksheet): SheetRow[] {
-  const rows: SheetRow[] = [];
-  sheet.eachRow({ includeEmpty: false }, (row) => {
-    const values: unknown[] = [];
-    for (let column = 1; column <= sheet.columnCount; column += 1) {
-      values.push(row.getCell(column).value);
-    }
-    rows.push(values);
+async function readXlsxSheets(buffer: Buffer) {
+  const reader = new ExcelJS.stream.xlsx.WorkbookReader(Readable.from(buffer), {
+    worksheets: "emit",
+    sharedStrings: "cache",
+    hyperlinks: "ignore",
+    styles: "ignore",
+    entries: "ignore",
   });
-  return rows;
+  let firstRows: SheetRow[] | null = null;
+  let masterRows: SheetRow[] | null = null;
+  let targetRows: SheetRow[] | null = null;
+
+  for await (const sheet of reader) {
+    const name = String((sheet as unknown as { name?: string }).name || "")
+      .trim()
+      .toUpperCase();
+    const shouldRead = !firstRows || name === "MASTER" || name === "TARGET";
+    if (!shouldRead) continue;
+    const rows: SheetRow[] = [];
+    for await (const row of sheet) {
+      if (!row.hasValues) continue;
+      const values: unknown[] = [];
+      for (let column = 1; column <= row.cellCount; column += 1) {
+        values.push(row.getCell(column).value);
+      }
+      rows.push(values);
+    }
+    firstRows ||= rows;
+    if (name === "MASTER") masterRows = rows;
+    if (name === "TARGET") targetRows = rows;
+  }
+
+  return { masterRows: masterRows || firstRows, targetRows };
 }
 
-function transactionRows(rows: SheetRow[]): TransactionInput[] {
-  if (!rows.length) throw new Error("File tidak memiliki baris data.");
+export function transactionRows(rows: SheetRow[]): TransactionInput[] {
+  if (!rows.length) throw new ImportValidationError("File tidak memiliki baris data.");
   const headers = rows[0].map(normalizeHeader);
   const column = new Map(headers.map((header, index) => [header, index]));
   const missing = REQUIRED_HEADERS.filter((header) => !column.has(header));
   if (missing.length) {
-    throw new Error(`Kolom wajib tidak ditemukan: ${missing.join(", ")}.`);
+    throw new ImportValidationError(
+      `Kolom wajib tidak ditemukan pada baris pertama sheet MASTER: ${missing.join(", ")}. Unduh template agar nama kolom sesuai.`,
+    );
   }
 
   const get = (row: SheetRow, name: string) => row[column.get(name) ?? -1];
   const occurrences = new Map<string, number>();
   const output: TransactionInput[] = [];
+  const invalidRows: string[] = [];
+  let invalidCount = 0;
 
-  for (const row of rows.slice(1)) {
+  for (const [index, row] of rows.slice(1).entries()) {
+    if (row.every((value) => !textValue(value))) continue;
+    const excelRow = index + 2;
     const orderDate = dateValue(get(row, "order_date"));
     const siteCode = textValue(get(row, "site_code"));
     const siteDesc = textValue(get(row, "site_desc"));
     const salesName = textValue(get(row, "sales_name"));
-    if (!orderDate || !siteCode || !siteDesc || !salesName) continue;
+    const brandName = textValue(get(row, "brand_name"));
+    const articleDescription = textValue(get(row, "article_description"));
+    const category = textValue(get(row, "cat"));
+    const quantity = requiredNumber(get(row, "quantity"));
+    const nettExcTax = requiredNumber(get(row, "total_nett_amount_exc_tax"));
+    const issues = [
+      !siteCode && "site_code kosong",
+      !siteDesc && "site_desc kosong",
+      !salesName && "sales_name kosong",
+      !orderDate && "order_date tidak valid",
+      !brandName && "brand_name kosong",
+      !articleDescription && "article_description kosong",
+      quantity === null && "quantity bukan angka",
+      nettExcTax === null && "total_nett_amount_exc_tax bukan angka",
+      !category && "CAT kosong",
+    ].filter(Boolean);
+    if (issues.length) {
+      invalidCount += 1;
+      if (invalidRows.length < 8) {
+        invalidRows.push(`baris ${excelRow}: ${issues.join(", ")}`);
+      }
+      continue;
+    }
 
     const stableValues = headers.map((header) => textValue(get(row, header)));
     const base = createHash("sha256")
@@ -204,55 +284,59 @@ function transactionRows(rows: SheetRow[]): TransactionInput[] {
       salesCode: textValue(get(row, "sales_code")) || null,
       salesName,
       posNumber: textValue(get(row, "pos_number")) || null,
-      orderDate,
+      orderDate: orderDate!,
       week: numberValue(get(row, "week")) || null,
       itemGroup: textValue(get(row, "item_group")) || null,
       itemGroupDesc: textValue(get(row, "item_group_desc")) || null,
-      brandName: textValue(get(row, "brand_name")) || "TANPA BRAND",
+      brandName,
       articleCode: textValue(get(row, "article_code")) || null,
-      articleDescription:
-        textValue(get(row, "article_description")) || "Tanpa deskripsi",
-      quantity: Math.round(numberValue(get(row, "quantity"))),
+      articleDescription,
+      quantity: Math.round(quantity!),
       price: numberValue(get(row, "price")),
       discount: numberValue(get(row, "discount")),
       totalNettAmountWithTax: numberValue(
         get(row, "total_nett_amount_with_tax"),
       ),
-      totalNettAmountExcTax: numberValue(
-        get(row, "total_nett_amount_exc_tax"),
-      ),
-      category: textValue(get(row, "cat")) || "OTHER",
-      category2: textValue(get(row, "cat 2")) || null,
-      businessUnit: textValue(get(row, "bu desc")) || null,
+      totalNettAmountExcTax: nettExcTax!,
+      category,
+      category2: textValue(get(row, "cat_2")) || null,
+      businessUnit: textValue(get(row, "bu_desc")) || null,
       salesLeader: textValue(get(row, "sl")) || null,
       territorySalesHead: textValue(get(row, "tsh")) || null,
     });
   }
 
+  if (invalidCount) {
+    const remaining = invalidCount - invalidRows.length;
+    throw new ImportValidationError(
+      `${invalidCount} baris data tidak valid. ${invalidRows.join("; ")}${remaining > 0 ? `; dan ${remaining} baris lainnya` : ""}. Tidak ada data yang disimpan.`,
+    );
+  }
+
   if (!output.length) {
-    throw new Error("Tidak ada transaksi valid yang dapat diimpor.");
+    throw new ImportValidationError("Tidak ada transaksi valid yang dapat diimpor.");
   }
   return output;
 }
 
-function cell(sheet: ExcelJS.Worksheet, row: number, column: number) {
-  return sheet.getRow(row).getCell(column).value;
+function cell(rows: SheetRow[], row: number, column: number) {
+  return rows[row - 1]?.[column - 1];
 }
 
 function targetMap(
-  sheet: ExcelJS.Worksheet,
+  rows: SheetRow[],
   salesRows: number[],
   salesColumn: number,
   definitions: Array<{ key: string; column: number }>,
 ) {
   const result: Record<string, Record<string, number>> = {};
   for (const row of salesRows) {
-    const sales = textValue(cell(sheet, row, salesColumn));
+    const sales = textValue(cell(rows, row, salesColumn));
     if (!sales || /total/i.test(sales)) continue;
     result[sales] = {};
     for (const definition of definitions) {
       result[sales][definition.key] = numberValue(
-        cell(sheet, row, definition.column),
+        cell(rows, row, definition.column),
       );
     }
   }
@@ -260,7 +344,8 @@ function targetMap(
 }
 
 function extractReport(
-  workbook: ExcelJS.Workbook,
+  target: SheetRow[] | null,
+  master: SheetRow[],
   fileName: string,
 ): {
   storeCode: string;
@@ -270,7 +355,6 @@ function extractReport(
   sourceFile: string;
   config: ReportConfig;
 } | null {
-  const target = workbook.getWorksheet("TARGET");
   if (!target) return null;
   const title = textValue(cell(target, 1, 1)).toUpperCase();
   const storeCode = title.match(/\b[A-Z]\d{3}\b/)?.[0] || "M221";
@@ -279,17 +363,16 @@ function extractReport(
     Object.entries(INDONESIAN_MONTHS).find(([name]) => title.includes(name))?.[1] ||
     0;
   if (!month || !year) {
-    throw new Error("Periode pada sheet TARGET tidak dapat dikenali.");
+    throw new ImportValidationError(
+      "Periode pada judul sheet TARGET tidak dapat dikenali. Cantumkan nama bulan Indonesia dan tahun, misalnya AGUSTUS 2026.",
+    );
   }
 
-  const master = workbook.getWorksheet("MASTER");
   let storeName = `ERAFONE & MORE ${storeCode}`;
-  if (master) {
-    for (let row = 2; row <= master.rowCount; row += 1) {
-      if (textValue(cell(master, row, 3)).toUpperCase() === storeCode) {
-        storeName = textValue(cell(master, row, 4)) || storeName;
-        break;
-      }
+  for (let row = 2; row <= master.length; row += 1) {
+    if (textValue(cell(master, row, 3)).toUpperCase() === storeCode) {
+      storeName = textValue(cell(master, row, 4)) || storeName;
+      break;
     }
   }
 
@@ -369,19 +452,26 @@ function extractReport(
 export async function importSalesBuffer(buffer: Buffer, fileName: string) {
   const extension = fileName.split(".").pop()?.toLowerCase();
   if (!extension || !["xlsx", "csv"].includes(extension)) {
-    throw new Error("Format file harus .xlsx atau .csv.");
+    throw new ImportValidationError("Format file harus .xlsx atau .csv.");
   }
 
   let transactions: TransactionInput[];
   let report: ReturnType<typeof extractReport> = null;
 
   if (extension === "xlsx") {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(Uint8Array.from(buffer).buffer);
-    const master = workbook.getWorksheet("MASTER") || workbook.worksheets[0];
-    if (!master) throw new Error("Sheet MASTER tidak ditemukan.");
-    transactions = transactionRows(worksheetRows(master));
-    report = extractReport(workbook, fileName);
+    let sheets: Awaited<ReturnType<typeof readXlsxSheets>>;
+    try {
+      sheets = await readXlsxSheets(buffer);
+    } catch {
+      throw new ImportValidationError(
+        "File Excel rusak, memakai password, atau bukan workbook .xlsx yang valid.",
+      );
+    }
+    if (!sheets.masterRows) {
+      throw new ImportValidationError("Sheet MASTER tidak ditemukan.");
+    }
+    transactions = transactionRows(sheets.masterRows);
+    report = extractReport(sheets.targetRows, sheets.masterRows, fileName);
   } else {
     transactions = transactionRows(parseCsv(buffer.toString("utf8")));
   }
@@ -389,63 +479,98 @@ export async function importSalesBuffer(buffer: Buffer, fileName: string) {
   const dates = transactions.map((row) => new Date(row.orderDate).getTime());
   const periodStart = new Date(Math.min(...dates));
   const periodEnd = new Date(Math.max(...dates));
-  const batch = await prisma.importBatch.create({
-    data: {
-      fileName,
-      fileType: extension,
-      rowCount: transactions.length,
-      insertedCount: 0,
-      periodStart,
-      periodEnd,
-    },
-  });
-
-  let insertedRows = 0;
-  for (let index = 0; index < transactions.length; index += 500) {
-    const result = await prisma.salesTransaction.createMany({
-      data: transactions.slice(index, index + 500).map((row) => ({
-        ...row,
-        importBatchId: batch.id,
-      })),
-      skipDuplicates: true,
-    });
-    insertedRows += result.count;
-  }
-
-  await prisma.importBatch.update({
-    where: { id: batch.id },
-    data: { insertedCount: insertedRows },
-  });
-
-  if (report) {
-    await prisma.reportDataset.upsert({
-      where: {
-        storeCode_month_year: {
-          storeCode: report.storeCode,
-          month: report.month,
-          year: report.year,
+  const persisted = await prisma.$transaction(
+    async (database) => {
+      const existingReport = report
+        ? await database.reportDataset.findUnique({
+            where: {
+              storeCode_month_year: {
+                storeCode: report.storeCode,
+                month: report.month,
+                year: report.year,
+              },
+            },
+            select: { id: true },
+          })
+        : null;
+      const batch = await database.importBatch.create({
+        data: {
+          fileName,
+          fileType: extension,
+          rowCount: transactions.length,
+          insertedCount: 0,
+          periodStart,
+          periodEnd,
         },
-      },
-      create: {
-        ...report,
-        config: report.config as Prisma.InputJsonValue,
-        importBatchId: batch.id,
-      },
-      update: {
-        ...report,
-        config: report.config as Prisma.InputJsonValue,
-        importBatchId: batch.id,
-      },
-    });
-  }
+      });
+
+      let insertedRows = 0;
+      for (let index = 0; index < transactions.length; index += INSERT_CHUNK_SIZE) {
+        const inserted = await database.salesTransaction.createMany({
+          data: transactions
+            .slice(index, index + INSERT_CHUNK_SIZE)
+            .map((row) => ({ ...row, importBatchId: batch.id })),
+          skipDuplicates: true,
+        });
+        insertedRows += inserted.count;
+      }
+
+      await syncSalesMaster(transactions, database);
+
+      if (report) {
+        if (!insertedRows && existingReport) {
+          await database.reportDataset.update({
+            where: { id: existingReport.id },
+            data: {
+              storeName: report.storeName,
+              sourceFile: report.sourceFile,
+              config: report.config as Prisma.InputJsonValue,
+            },
+          });
+        } else {
+          await database.reportDataset.upsert({
+            where: {
+              storeCode_month_year: {
+                storeCode: report.storeCode,
+                month: report.month,
+                year: report.year,
+              },
+            },
+            create: {
+              ...report,
+              config: report.config as Prisma.InputJsonValue,
+              importBatchId: batch.id,
+            },
+            update: {
+              ...report,
+              config: report.config as Prisma.InputJsonValue,
+              importBatchId: batch.id,
+            },
+          });
+        }
+      }
+
+      if (!insertedRows && (!report || existingReport)) {
+        await database.importBatch.delete({ where: { id: batch.id } });
+        return { batchId: null, insertedRows };
+      }
+
+      await database.importBatch.update({
+        where: { id: batch.id },
+        data: { insertedCount: insertedRows },
+      });
+      return { batchId: batch.id, insertedRows };
+    },
+    { maxWait: 10_000, timeout: 120_000 },
+  );
 
   const result: ImportResult = {
-    batchId: batch.id,
+    batchId: persisted.batchId,
     fileName,
     detectedType: report ? "report" : "master",
     readRows: transactions.length,
-    insertedRows,
-    duplicateRows: transactions.length - insertedRows,
+    insertedRows: persisted.insertedRows,
+    duplicateRows: transactions.length - persisted.insertedRows,
     stores: new Set(transactions.map((row) => row.siteCode)).size,
     periodStart: periodStart.toISOString(),
     periodEnd: periodEnd.toISOString(),

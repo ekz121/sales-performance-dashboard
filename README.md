@@ -72,9 +72,13 @@ npm run build
 
 ## Format impor Excel/CSV
 
-Halaman `/admin/import` menerima `.xlsx` dan `.csv` dengan format master sales. Kolom utamanya mencakup `sales_org`, `site_code`, `sales_code`, `order_date`, `brand_name`, `article_code`, `quantity`, `total_nett_amount_with_tax`, `total_nett_amount_exc_tax`, `CAT`, `CAT 2`, dan kolom master lain yang tersedia.
+Halaman `/admin/import` menerima `.xlsx` dan `.csv` maksimal 4 MB. Untuk Excel, gunakan sheet `MASTER` dan letakkan header pada baris pertama. Sembilan kolom wajibnya adalah `site_code`, `site_desc`, `sales_name`, `order_date`, `brand_name`, `article_description`, `quantity`, `total_nett_amount_exc_tax`, dan `CAT`. Template yang dapat diunduh dari halaman import sudah memuat seluruh 24 kolom yang didukung beserta contoh dan petunjuk.
 
-Workbook report seperti `REPORT M221 AGUSTUS 2026 UPDATE.xlsx` juga dapat diimpor. Selain transaksi pada sheet `MASTER`, aplikasi menyimpan konfigurasi target report yang dikenali ke MySQL. Baris transaksi dideduplikasi menggunakan fingerprint sehingga impor ulang tidak menggandakan omzet.
+Tanggal dapat berupa tanggal Excel, `DD/MM/YYYY`, atau `YYYY-MM-DD`. Kolom nominal harus berupa angka tanpa teks `Rp`. Kategori utama yang ditampilkan pada ringkasan performa adalah `DEVICE`, `ACC & IOT`, `REPAIR CONTRACT`, `CARRIER`, `CE`, dan `LAPTOP`; kategori lain tetap disimpan dan terlihat pada daftar transaksi.
+
+Workbook report seperti `REPORT M221 AGUSTUS 2026 UPDATE.xlsx` juga dapat diimpor selama sheet `MASTER` dan `TARGET` dengan layout report asli tetap dipertahankan. Sheet `MASTER` mengisi seluruh actual; sheet `TARGET` mengisi target kategori, brand, operator, dan racing. File master tanpa `TARGET` tetap sah, tetapi hanya memperbarui actual. Target juga dapat dikelola melalui `/admin/report-targets`.
+
+Seluruh file divalidasi sebelum disimpan. Jika ada baris wajib yang tidak valid, pesan error menyebut nomor baris dan seluruh impor dibatalkan. Penyimpanan memakai transaksi database sehingga tidak ada kondisi sebagian baris masuk. Baris identik dideduplikasi menggunakan fingerprint; mengunggah file yang sama kembali tidak menggandakan omzet atau membuat riwayat kosong.
 
 Urutan pemakaian:
 

@@ -26,18 +26,24 @@ export async function GET(request: NextRequest) {
   ]);
   master.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
   master.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE31E2F" } };
+  for (const column of [3, 4, 6, 8, 12, 14, 15, 19, 20]) {
+    master.getCell(1, column).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF9F1239" } };
+  }
   master.columns.forEach((column) => { column.width = 22; });
   master.getColumn(8).numFmt = "dd/mm/yyyy";
   const guide = workbook.addWorksheet("PETUNJUK");
   [
-    ["FORMAT IMPORT PENJUALAN"],
-    ["Jangan mengubah nama sheet MASTER atau nama header."],
+    ["FORMAT IMPORT ACTUAL PENJUALAN"],
+    ["Gunakan sheet MASTER dan letakkan header pada baris pertama."],
     ["Satu baris adalah satu transaksi/item penjualan."],
-    ["Kolom wajib", "site_code, site_desc, sales_name, order_date, brand_name, article_description, quantity, total_nett_amount_exc_tax, CAT"],
+    ["Kolom wajib (header merah tua)", "site_code, site_desc, sales_name, order_date, brand_name, article_description, quantity, total_nett_amount_exc_tax, CAT"],
+    ["Kolom opsional", "sales_org, sales_org_desc, sales_code, pos_number, week, item_group, item_group_desc, article_code, price, discount, total_nett_amount_with_tax, CAT 2, BU DESC, SL, TSH"],
     ["Kategori utama", "DEVICE, ACC & IOT, REPAIR CONTRACT, CARRIER, CE, LAPTOP"],
-    ["Tanggal", "Gunakan tanggal Excel atau format DD/MM/YYYY."],
+    ["Tanggal", "Gunakan tanggal Excel, DD/MM/YYYY, atau YYYY-MM-DD."],
     ["Nominal", "Gunakan angka tanpa Rp dan tanpa pemisah ribuan."],
-    ["Duplikat", "Baris identik akan dilewati otomatis."],
+    ["Validasi", "Jika satu baris wajib tidak valid, seluruh file ditolak. Pesan web akan menyebut nomor baris yang harus diperbaiki."],
+    ["Duplikat", "Baris identik yang sudah pernah masuk akan dilewati otomatis."],
+    ["Target", "Template ini mengimpor actual. Isi target melalui menu Target di web, atau unggah workbook report yang memiliki sheet TARGET dengan layout report asli."],
   ].forEach((row) => guide.addRow(row));
   guide.getColumn(1).width = 28;
   guide.getColumn(2).width = 110;

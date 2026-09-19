@@ -36,9 +36,12 @@ export async function readJsonResponse<T>(response: Response): Promise<T> {
     parsed = JSON.parse(body);
   } catch {
     const isHtml = contentType.includes("text/html") || /^\s*</.test(body);
+    const gatewayFailure = response.status === 502 || response.status === 504;
     throw new ApiResponseError(
       isHtml
-        ? "Server mengirim halaman HTML, bukan data JSON. Jalankan aplikasi melalui Next.js dan pastikan endpoint API tersedia."
+        ? gatewayFailure
+          ? "Respons server terputus karena proses terlalu lama. Status impor akan diperiksa otomatis pada riwayat."
+          : `Server hosting mengirim halaman HTML (HTTP ${response.status || "tanpa status"}), bukan respons API. Periksa status deploy dan log fungsi Netlify.`
         : "Format respons server tidak valid. Silakan periksa log server.",
       response.status,
     );

@@ -6,8 +6,13 @@ type MasterRow = Pick<
   "siteCode" | "siteDesc" | "salesName"
 >;
 
+type SalesMasterClient = Pick<Prisma.TransactionClient, "store" | "sales">;
+
 /** Keeps the editable Store/Sales masters aligned with analytics transactions. */
-export async function syncSalesMaster(rows: MasterRow[]) {
+export async function syncSalesMaster(
+  rows: MasterRow[],
+  client: SalesMasterClient = prisma,
+) {
   const stores = Array.from(
     new Map(
       rows
@@ -21,8 +26,8 @@ export async function syncSalesMaster(rows: MasterRow[]) {
 
   if (!stores.length) return;
 
-  await prisma.store.createMany({ data: stores, skipDuplicates: true });
-  const stored = await prisma.store.findMany({
+  await client.store.createMany({ data: stores, skipDuplicates: true });
+  const stored = await client.store.findMany({
     where: { kode: { in: stores.map((store) => store.kode) } },
     select: { id: true, kode: true },
   });
@@ -42,6 +47,6 @@ export async function syncSalesMaster(rows: MasterRow[]) {
   );
 
   if (sales.length) {
-    await prisma.sales.createMany({ data: sales, skipDuplicates: true });
+    await client.sales.createMany({ data: sales, skipDuplicates: true });
   }
 }

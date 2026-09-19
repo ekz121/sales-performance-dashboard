@@ -1,11 +1,12 @@
 import type { NextRequest } from "next/server";
 import { isAdminRequest } from "@/lib/auth";
-import { noStoreJson, revalidateDashboard } from "@/lib/api";
-import { importSalesBuffer } from "@/lib/import-sales";
+import { apiError, noStoreJson, revalidateDashboard } from "@/lib/api";
+import { ImportValidationError, importSalesBuffer } from "@/lib/import-sales";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
   if (!(await isAdminRequest(request))) {
@@ -47,14 +48,9 @@ export async function POST(request: NextRequest) {
     return noStoreJson(result, { status: 201 });
   } catch (error) {
     console.error(error);
-    return noStoreJson(
-      {
-        message:
-          error instanceof Error
-            ? error.message
-            : "File gagal diproses. Periksa kembali format datanya.",
-      },
-      { status: 400 },
-    );
+    if (error instanceof ImportValidationError) {
+      return noStoreJson({ message: error.message }, { status: 400 });
+    }
+    return apiError(error);
   }
 }
