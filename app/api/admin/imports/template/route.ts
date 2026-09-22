@@ -31,10 +31,19 @@ export async function GET(request: NextRequest) {
   }
   master.columns.forEach((column) => { column.width = 22; });
   master.getColumn(8).numFmt = "dd/mm/yyyy";
+  const racing = workbook.addWorksheet("RACING_CONFIG", { views: [{ state: "frozen", ySplit: 1 }] });
+  racing.addRow([
+    "racing_key", "label", "primary_unit", "brand_match", "article_match",
+    "category_match", "min_unit_amount", "amount_source", "sales_name",
+    "target_quantity", "target_amount",
+  ]);
+  racing.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+  racing.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F2937" } };
+  racing.columns.forEach((column) => { column.width = 24; });
   const guide = workbook.addWorksheet("PETUNJUK");
   [
     ["FORMAT IMPORT ACTUAL PENJUALAN"],
-    ["Gunakan sheet MASTER dan letakkan header pada baris pertama."],
+    ["Sheet transaksi", "Nama sheet bebas. Sistem mencari 9 header wajib pada 30 baris pertama dan memprioritaskan sheet bernama MASTER."],
     ["Satu baris adalah satu transaksi/item penjualan."],
     ["Kolom wajib (header merah tua)", "site_code, site_desc, sales_name, order_date, brand_name, article_description, quantity, total_nett_amount_exc_tax, CAT"],
     ["Kolom opsional", "sales_org, sales_org_desc, sales_code, pos_number, week, item_group, item_group_desc, article_code, price, discount, total_nett_amount_with_tax, CAT 2, BU DESC, SL, TSH"],
@@ -43,7 +52,10 @@ export async function GET(request: NextRequest) {
     ["Nominal", "Gunakan angka tanpa Rp dan tanpa pemisah ribuan."],
     ["Validasi", "Jika satu baris wajib tidak valid, seluruh file ditolak. Pesan web akan menyebut nomor baris yang harus diperbaiki."],
     ["Duplikat", "Baris identik yang sudah pernah masuk akan dilewati otomatis."],
-    ["Target", "Template ini mengimpor actual. Isi target melalui menu Target di web, atau unggah workbook report yang memiliki sheet TARGET dengan layout report asli."],
+    ["Target", "Workbook report dengan sheet TARGET dibaca otomatis berdasarkan judul/header, bukan nomor baris tetap."],
+    ["Racing bulanan", "Untuk program Racing baru atau format yang tidak dapat ditebak, isi sheet RACING_CONFIG. Satu baris per sales/program; pemisah beberapa kata pencarian adalah |."],
+    ["primary_unit", "Gunakan qty atau amount. amount_source dapat diisi net atau gross."],
+    ["Pencocokan Racing", "brand_match, article_match, category_match, dan min_unit_amount menentukan transaksi actual yang dihitung. Kolom yang tidak diperlukan boleh kosong."],
   ].forEach((row) => guide.addRow(row));
   guide.getColumn(1).width = 28;
   guide.getColumn(2).width = 110;

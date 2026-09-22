@@ -47,6 +47,17 @@ type TransactionInput = Omit<
   "importBatchId"
 >;
 
+export type RacingDefinition = {
+  key: string;
+  label: string;
+  unit: "qty" | "amount";
+  brandIncludes?: string[];
+  articleIncludes?: string[];
+  category?: string;
+  minUnitAmount?: number;
+  amountSource?: "net" | "gross";
+};
+
 export type ReportConfig = {
   categoryTargets: Record<string, Record<string, number>>;
   brandTargets: Record<string, Record<string, number>>;
@@ -55,6 +66,7 @@ export type ReportConfig = {
     string,
     Record<string, { quantity?: number; amount?: number }>
   >;
+  racingDefinitions?: RacingDefinition[];
 };
 
 export type ImportResult = {
@@ -67,6 +79,7 @@ export type ImportResult = {
   stores: number;
   periodStart: string | null;
   periodEnd: string | null;
+  sourceSheet: string;
   report: { storeCode: string; month: number; year: number } | null;
 };
 
@@ -182,6 +195,14 @@ function parseCsv(source: string): SheetRow[] {
   return rows;
 }
 
+function headerRowIndex(rows: SheetRow[]) {
+  for (let index = 0; index < Math.min(rows.length, 30); index += 1) {
+    const headers = new Set(rows[index].map(normalizeHeader));
+    if (REQUIRED_HEADERS.every((header) => headers.has(header))) return index;
+  }
+  return -1;
+}
+
 async function readXlsxSheets(buffer: Buffer) {
   const reader = new ExcelJS.stream.xlsx.WorkbookReader(Readable.from(buffer), {
     worksheets: "emit",
@@ -190,16 +211,11 @@ async function readXlsxSheets(buffer: Buffer) {
     styles: "ignore",
     entries: "ignore",
   });
-  let firstRows: SheetRow[] | null = null;
-  let masterRows: SheetRow[] | null = null;
-  let targetRows: SheetRow[] | null = null;
+  const sheets = new Map<string, { name: string; rows: SheetRow[] }>();
 
   for await (const sheet of reader) {
-    const name = String((sheet as unknown as { name?: string }).name || "")
-      .trim()
-      .toUpperCase();
-    const shouldRead = !firstRows || name === "MASTER" || name === "TARGET";
-    if (!shouldRead) continue;
+    const originalName = String((sheet as unknown as { name?: string }).name || "").trim();
+    const name = originalName.toUpperCase();
     const rows: SheetRow[] = [];
     for await (const row of sheet) {
       if (!row.hasValues) continue;
@@ -209,22 +225,37 @@ async function readXlsxSheets(buffer: Buffer) {
       }
       rows.push(values);
     }
-    firstRows ||= rows;
-    if (name === "MASTER") masterRows = rows;
-    if (name === "TARGET") targetRows = rows;
+    sheets.set(name, { name: originalName || name, rows });
   }
 
-  return { masterRows: masterRows || firstRows, targetRows };
+  const transactionSheets = Array.from(sheets.values()).filter(
+    ({ rows }) => headerRowIndex(rows) >= 0,
+  );
+  const selected = sheets.get("MASTER") || transactionSheets.sort(
+    (left, right) => right.rows.length - left.rows.length,
+  )[0];
+  return {
+    masterRows: selected?.rows || null,
+    sourceSheet: selected?.name || "",
+    targetRows: sheets.get("TARGET")?.rows || null,
+    racingConfigRows: sheets.get("RACING_CONFIG")?.rows || null,
+  };
 }
 
 export function transactionRows(rows: SheetRow[]): TransactionInput[] {
   if (!rows.length) throw new ImportValidationError("File tidak memiliki baris data.");
-  const headers = rows[0].map(normalizeHeader);
+  const headerIndex = headerRowIndex(rows);
+  if (headerIndex < 0) {
+    throw new ImportValidationError(
+      `Kolom wajib tidak ditemukan pada 30 baris pertama: ${REQUIRED_HEADERS.join(", ")}. Unduh template agar nama kolom sesuai.`,
+    );
+  }
+  const headers = rows[headerIndex].map(normalizeHeader);
   const column = new Map(headers.map((header, index) => [header, index]));
   const missing = REQUIRED_HEADERS.filter((header) => !column.has(header));
   if (missing.length) {
     throw new ImportValidationError(
-      `Kolom wajib tidak ditemukan pada baris pertama sheet MASTER: ${missing.join(", ")}. Unduh template agar nama kolom sesuai.`,
+      `Kolom wajib tidak ditemukan: ${missing.join(", ")}. Unduh template agar nama kolom sesuai.`,
     );
   }
 
@@ -234,9 +265,9 @@ export function transactionRows(rows: SheetRow[]): TransactionInput[] {
   const invalidRows: string[] = [];
   let invalidCount = 0;
 
-  for (const [index, row] of rows.slice(1).entries()) {
+  for (const [index, row] of rows.slice(headerIndex + 1).entries()) {
     if (row.every((value) => !textValue(value))) continue;
-    const excelRow = index + 2;
+    const excelRow = index + headerIndex + 2;
     const orderDate = dateValue(get(row, "order_date"));
     const siteCode = textValue(get(row, "site_code"));
     const siteDesc = textValue(get(row, "site_desc"));
@@ -265,7 +296,25 @@ export function transactionRows(rows: SheetRow[]): TransactionInput[] {
       continue;
     }
 
-    const stableValues = headers.map((header) => textValue(get(row, header)));
+    // Fingerprint memakai identitas transaksi, bukan jumlah/urutan kolom workbook.
+    // Dengan begitu baris yang sama pada MASTER regional dan report store tetap
+    // dikenali sebagai duplikat walaupun salah satu file memiliki kolom tambahan.
+    const stableValues = [
+      siteCode,
+      textValue(get(row, "sales_code")),
+      salesName,
+      textValue(get(row, "pos_number")),
+      orderDate!.toISOString(),
+      brandName,
+      textValue(get(row, "article_code")),
+      articleDescription,
+      quantity,
+      numberValue(get(row, "price")),
+      numberValue(get(row, "discount")),
+      numberValue(get(row, "total_nett_amount_with_tax")),
+      nettExcTax,
+      category,
+    ];
     const base = createHash("sha256")
       .update(JSON.stringify(stableValues))
       .digest("hex");
@@ -323,30 +372,215 @@ function cell(rows: SheetRow[], row: number, column: number) {
   return rows[row - 1]?.[column - 1];
 }
 
-function targetMap(
-  rows: SheetRow[],
-  salesRows: number[],
-  salesColumn: number,
-  definitions: Array<{ key: string; column: number }>,
-) {
-  const result: Record<string, Record<string, number>> = {};
-  for (const row of salesRows) {
-    const sales = textValue(cell(rows, row, salesColumn));
-    if (!sales || /total/i.test(sales)) continue;
+function upper(value: unknown) {
+  return textValue(value).trim().toUpperCase();
+}
+
+function keyValue(value: string) {
+  return value.replace(/[^A-Z0-9]+/g, "_").replace(/^_|_$/g, "");
+}
+
+function transactionSales(master: SheetRow[]) {
+  const headerIndex = headerRowIndex(master);
+  if (headerIndex < 0) return new Set<string>();
+  const headers = master[headerIndex].map(normalizeHeader);
+  const salesColumn = headers.indexOf("sales_name");
+  return new Set(
+    master.slice(headerIndex + 1).map((row) => textValue(row[salesColumn]).trim()).filter(Boolean),
+  );
+}
+
+function extractCategoryTargets(target: SheetRow[]) {
+  const keys = ["ACC & IOT", "CARRIER", "CE", "DEVICE", "LAPTOP", "REPAIR CONTRACT"];
+  const headerIndex = target.findIndex((row) => {
+    const values = row.map(upper);
+    return values[0] === "SALES NAME" && keys.filter((key) => values.includes(key)).length >= 3;
+  });
+  const result: ReportConfig["categoryTargets"] = {};
+  if (headerIndex < 0) return result;
+  const headers = target[headerIndex].map(upper);
+  for (let index = headerIndex + 1; index < target.length; index += 1) {
+    const sales = textValue(target[index][0]).trim();
+    if (!sales || /TOTAL/i.test(sales)) break;
     result[sales] = {};
-    for (const definition of definitions) {
-      result[sales][definition.key] = numberValue(
-        cell(rows, row, definition.column),
-      );
+    for (const key of keys) {
+      const column = headers.indexOf(key);
+      if (column >= 0) result[sales][key] = numberValue(target[index][column]);
     }
   }
   return result;
 }
 
-function extractReport(
+function extractBrandTargets(target: SheetRow[]) {
+  const result: ReportConfig["brandTargets"] = {};
+  for (let rowIndex = 0; rowIndex < target.length; rowIndex += 1) {
+    const labelColumn = target[rowIndex].findIndex((value) => upper(value) === "LABEL BARIS");
+    if (labelColumn < 0) continue;
+    const salesColumns = target[rowIndex]
+      .map((value, column) => ({ sales: textValue(value).trim(), column }))
+      .filter(({ sales, column }) => column > labelColumn && sales);
+    for (const { sales } of salesColumns) result[sales] = {};
+    for (let index = rowIndex + 1; index < target.length; index += 1) {
+      const brand = upper(target[index][labelColumn]);
+      if (!brand || /GRAND|TOTAL/.test(brand)) break;
+      for (const { sales, column } of salesColumns) {
+        result[sales][brand] = numberValue(target[index][column]);
+      }
+    }
+    break;
+  }
+  return result;
+}
+
+function extractOperatorTargets(target: SheetRow[]) {
+  const result: ReportConfig["operatorTargets"] = {};
+  const operatorNames: Record<string, string> = {
+    ISAT: "INDOSAT",
+    INDOSAT: "INDOSAT",
+    TELKOMSEL: "TELKOMSEL",
+    "XL PRIO": "XL PRIO",
+  };
+  for (let rowIndex = 0; rowIndex < target.length; rowIndex += 1) {
+    for (let column = 0; column < target[rowIndex].length; column += 1) {
+      const title = upper(target[rowIndex][column]);
+      const matched = Object.entries(operatorNames).find(([name]) => title === `TARGET ${name}`);
+      if (!matched || upper(target[rowIndex + 1]?.[column]) !== "SALES NAME") continue;
+      const key = matched[1];
+      for (let index = rowIndex + 2; index < target.length; index += 1) {
+        const sales = textValue(target[index][column]).trim();
+        if (!sales || /TOTAL/i.test(sales)) break;
+        result[sales] ||= {};
+        result[sales][key] = numberValue(target[index][column + 1]);
+      }
+    }
+  }
+  return result;
+}
+
+function racingDefinition(
+  program: string,
+  header: string,
+  unit: "qty" | "amount",
+): RacingDefinition {
+  const name = upper(header);
+  if (program.includes("TECNO") && name.includes("CAMON")) {
+    return { key: "CAMON_50", label: "Tecno Camon 50", unit: "qty", brandIncludes: ["TECNO"], articleIncludes: ["CAMON 50"] };
+  }
+  if (program.includes("TECNO") && name.includes("POVA")) {
+    return { key: "POVA_8", label: "Tecno Pova 8", unit: "qty", brandIncludes: ["TECNO"], articleIncludes: ["POVA 8"] };
+  }
+  if (program.includes("VIVO") && name.replace(/\s/g, "").includes("ALLTYPE")) {
+    return { key: "VIVO_ALL_TYPE", label: "Vivo All Type", unit: "qty", brandIncludes: ["VIVO"], category: "DEVICE" };
+  }
+  if (program.includes("VIVO") && /3\s*JT/.test(name)) {
+    return { key: "VIVO_3JT_UP", label: "Vivo 3 Juta ke Atas", unit: "qty", brandIncludes: ["VIVO"], category: "DEVICE", minUnitAmount: 3_000_000 };
+  }
+  if (program.includes("MEDPOIN")) {
+    return { key: "MEDPOIN", label: "Medpoint Booster", unit: "amount", brandIncludes: ["MEDPOIN"], amountSource: "gross" };
+  }
+  if (program.includes("OPPO") && name.includes("RENO")) {
+    return { key: "OPPO_RENO_16", label: "OPPO Reno 16", unit: "qty", brandIncludes: ["OPPO"], articleIncludes: ["RENO 16"] };
+  }
+  if (program.includes("OPPO") && name.includes("IOT")) {
+    return { key: "OPPO_IOT", label: "OPPO IoT", unit: "qty", brandIncludes: ["OPPO"], category: "ACC & IOT" };
+  }
+  if (program.includes("OPPO")) {
+    return { key: "OPPO_ALL_TYPE", label: "OPPO All Type", unit, brandIncludes: ["OPPO"], category: "DEVICE" };
+  }
+  const cleanProgram = program.replace(/^TARGET\s+(?:RACING\s+)?/, "").trim();
+  const cleanHeader = name.replace(/^TARGET\s+/, "").trim();
+  return {
+    key: keyValue(`${cleanProgram}_${cleanHeader}`),
+    label: `${cleanProgram} ${cleanHeader}`.trim(),
+    unit,
+    brandIncludes: cleanProgram ? [cleanProgram.split(/\s+/).at(-1)!] : undefined,
+  };
+}
+
+function parseExplicitRacing(rows: SheetRow[] | null) {
+  if (!rows?.length) return null;
+  const index = rows.findIndex((row) => row.map(normalizeHeader).includes("racing_key"));
+  if (index < 0) return null;
+  const headers = rows[index].map(normalizeHeader);
+  const column = (name: string) => headers.indexOf(name);
+  const targets: ReportConfig["racingTargets"] = {};
+  const definitions = new Map<string, RacingDefinition>();
+  const list = (value: unknown) => textValue(value).split(/[|;,]/).map((item) => item.trim().toUpperCase()).filter(Boolean);
+  for (const row of rows.slice(index + 1)) {
+    const key = keyValue(upper(row[column("racing_key")]));
+    if (!key) continue;
+    const primary = upper(row[column("primary_unit")]) === "AMOUNT" ? "amount" : "qty";
+    definitions.set(key, {
+      key,
+      label: textValue(row[column("label")]) || key.replace(/_/g, " "),
+      unit: primary,
+      brandIncludes: list(row[column("brand_match")]),
+      articleIncludes: list(row[column("article_match")]),
+      category: upper(row[column("category_match")]) || undefined,
+      minUnitAmount: numberValue(row[column("min_unit_amount")]) || undefined,
+      amountSource: upper(row[column("amount_source")]) === "GROSS" ? "gross" : "net",
+    });
+    const sales = textValue(row[column("sales_name")]).trim();
+    if (!sales) continue;
+    targets[sales] ||= {};
+    targets[sales][key] ||= {};
+    const quantity = requiredNumber(row[column("target_quantity")]);
+    const amount = requiredNumber(row[column("target_amount")]);
+    if (quantity !== null) targets[sales][key].quantity = quantity;
+    if (amount !== null) targets[sales][key].amount = amount;
+  }
+  return definitions.size ? { targets, definitions: Array.from(definitions.values()) } : null;
+}
+
+function extractRacing(target: SheetRow[], master: SheetRow[], explicitRows: SheetRow[] | null) {
+  const explicit = parseExplicitRacing(explicitRows);
+  if (explicit) return explicit;
+  const targets: ReportConfig["racingTargets"] = {};
+  const definitions = new Map<string, RacingDefinition>();
+  const knownSales = transactionSales(master);
+  for (let titleIndex = 0; titleIndex < target.length; titleIndex += 1) {
+    const program = upper(target[titleIndex][0]);
+    if (!/^TARGET\s+(?:RACING\s+)?(?:TECNO|VIVO|MEDPOIN|(?:FBE\s+)?OPPO)\b/.test(program)) continue;
+    let headerIndex = titleIndex + 1;
+    while (headerIndex < Math.min(target.length, titleIndex + 4)
+      && !/SALES NAME|TARGET STORE/.test(upper(target[headerIndex][0]))) headerIndex += 1;
+    if (headerIndex >= target.length || headerIndex >= titleIndex + 4) continue;
+    const headers = target[headerIndex];
+    for (let dataIndex = headerIndex + 1; dataIndex < target.length; dataIndex += 1) {
+      const sales = textValue(target[dataIndex][0]).trim();
+      if (!sales || /TOTAL|TARGET/i.test(sales)) break;
+      if (knownSales.size && !knownSales.has(sales)) continue;
+      for (let column = 1; column < headers.length; column += 1) {
+        let heading = upper(headers[column]);
+        // Header target MEDPOIN B:C memakai merged cell. Streaming Excel dapat
+        // mengembalikan kolom C kosong walaupun nilainya berisi target quantity.
+        if (!heading && program.includes("MEDPOIN") && column === 2) {
+          heading = upper(headers[1]);
+        }
+        // Setiap blok Racing pada report dipisahkan oleh kolom kosong. Jangan
+        // menyeberang ke blok operator/brand lain yang kebetulan satu baris.
+        if (!heading) break;
+        const value = requiredNumber(target[dataIndex][column]);
+        if (value === null) continue;
+        let unit: "qty" | "amount" = /AMT|AMOUNT/.test(heading) || value >= 100_000 ? "amount" : "qty";
+        if (program.includes("MEDPOIN")) unit = column === 1 ? "amount" : "qty";
+        const definition = racingDefinition(program, heading, unit);
+        const existing = definitions.get(definition.key);
+        definitions.set(definition.key, existing && existing.unit === "amount" ? existing : definition);
+        targets[sales] ||= {};
+        targets[sales][definition.key] ||= {};
+        targets[sales][definition.key][unit === "qty" ? "quantity" : "amount"] = value;
+      }
+    }
+  }
+  return { targets, definitions: Array.from(definitions.values()) };
+}
+
+export function extractReport(
   target: SheetRow[] | null,
   master: SheetRow[],
   fileName: string,
+  racingConfigRows: SheetRow[] | null = null,
 ): {
   storeCode: string;
   storeName: string;
@@ -356,7 +590,7 @@ function extractReport(
   config: ReportConfig;
 } | null {
   if (!target) return null;
-  const title = textValue(cell(target, 1, 1)).toUpperCase();
+  const title = target.slice(0, 5).flat().map(upper).find((value) => value.includes("TARGET ALL CAT")) || upper(cell(target, 1, 1));
   const storeCode = title.match(/\b[A-Z]\d{3}\b/)?.[0] || "M221";
   const year = Number(title.match(/\b20\d{2}\b/)?.[0] || 0);
   const month =
@@ -369,75 +603,19 @@ function extractReport(
   }
 
   let storeName = `ERAFONE & MORE ${storeCode}`;
-  for (let row = 2; row <= master.length; row += 1) {
-    if (textValue(cell(master, row, 3)).toUpperCase() === storeCode) {
-      storeName = textValue(cell(master, row, 4)) || storeName;
-      break;
-    }
+  const masterHeader = headerRowIndex(master);
+  if (masterHeader >= 0) {
+    const headers = master[masterHeader].map(normalizeHeader);
+    const codeColumn = headers.indexOf("site_code");
+    const nameColumn = headers.indexOf("site_desc");
+    const match = master.slice(masterHeader + 1).find((row) => upper(row[codeColumn]) === storeCode);
+    if (match) storeName = textValue(match[nameColumn]) || storeName;
   }
 
-  const categoryTargets = targetMap(target, [3, 4, 5, 6], 1, [
-    { key: "ACC & IOT", column: 2 },
-    { key: "CARRIER", column: 3 },
-    { key: "CE", column: 4 },
-    { key: "DEVICE", column: 5 },
-    { key: "LAPTOP", column: 6 },
-    { key: "REPAIR CONTRACT", column: 7 },
-  ]);
-
-  const brandTargets: Record<string, Record<string, number>> = {};
-  for (let column = 13; column <= 16; column += 1) {
-    const sales = textValue(cell(target, 1, column));
-    if (!sales) continue;
-    brandTargets[sales] = {};
-    for (let row = 2; row <= 13; row += 1) {
-      const brand = textValue(cell(target, row, 12)).toUpperCase();
-      if (!brand || /GRAND|TOTAL/.test(brand)) continue;
-      brandTargets[sales][brand] = numberValue(cell(target, row, column));
-    }
-  }
-
-  const operatorTargets: Record<string, Record<string, number>> = {};
-  const operatorDefinitions = [
-    { rows: [12, 13, 14, 15], salesColumn: 5, valueColumn: 6, key: "INDOSAT" },
-    { rows: [19, 20, 21, 22], salesColumn: 5, valueColumn: 6, key: "TELKOMSEL" },
-    { rows: [26, 27, 28, 29], salesColumn: 5, valueColumn: 6, key: "XL PRIO" },
-  ];
-  for (const definition of operatorDefinitions) {
-    for (const row of definition.rows) {
-      const sales = textValue(cell(target, row, definition.salesColumn));
-      if (!sales) continue;
-      operatorTargets[sales] ||= {};
-      operatorTargets[sales][definition.key] = numberValue(
-        cell(target, row, definition.valueColumn),
-      );
-    }
-  }
-
-  const racingTargets: ReportConfig["racingTargets"] = {};
-  for (const row of [11, 12, 13, 14]) {
-    const sales = textValue(cell(target, row, 1));
-    if (!sales) continue;
-    racingTargets[sales] = {
-      CAMON_50: { quantity: numberValue(cell(target, row, 2)) },
-      POVA_8: { quantity: numberValue(cell(target, row, 3)) },
-    };
-  }
-  for (const row of [19, 20, 21, 22]) {
-    const sales = textValue(cell(target, row, 1));
-    if (!sales) continue;
-    racingTargets[sales] ||= {};
-    racingTargets[sales].MEDPOIN = {
-      amount: numberValue(cell(target, row, 2)),
-      quantity: numberValue(cell(target, row, 3)),
-    };
-  }
-  for (const row of [26, 27, 28, 29]) {
-    const sales = textValue(cell(target, row, 1));
-    if (!sales) continue;
-    racingTargets[sales] ||= {};
-    racingTargets[sales].OPPO = { amount: numberValue(cell(target, row, 2)) };
-  }
+  const categoryTargets = extractCategoryTargets(target);
+  const brandTargets = extractBrandTargets(target);
+  const operatorTargets = extractOperatorTargets(target);
+  const racing = extractRacing(target, master, racingConfigRows);
 
   return {
     storeCode,
@@ -445,7 +623,13 @@ function extractReport(
     month,
     year,
     sourceFile: fileName,
-    config: { categoryTargets, brandTargets, operatorTargets, racingTargets },
+    config: {
+      categoryTargets,
+      brandTargets,
+      operatorTargets,
+      racingTargets: racing.targets,
+      racingDefinitions: racing.definitions,
+    },
   };
 }
 
@@ -457,6 +641,7 @@ export async function importSalesBuffer(buffer: Buffer, fileName: string) {
 
   let transactions: TransactionInput[];
   let report: ReturnType<typeof extractReport> = null;
+  let sourceSheet = "CSV";
 
   if (extension === "xlsx") {
     let sheets: Awaited<ReturnType<typeof readXlsxSheets>>;
@@ -468,10 +653,18 @@ export async function importSalesBuffer(buffer: Buffer, fileName: string) {
       );
     }
     if (!sheets.masterRows) {
-      throw new ImportValidationError("Sheet MASTER tidak ditemukan.");
+      throw new ImportValidationError(
+        "Tidak ditemukan sheet berisi 9 kolom wajib transaksi. Nama sheet boleh apa saja; gunakan template untuk susunan header yang didukung.",
+      );
     }
+    sourceSheet = sheets.sourceSheet;
     transactions = transactionRows(sheets.masterRows);
-    report = extractReport(sheets.targetRows, sheets.masterRows, fileName);
+    report = extractReport(
+      sheets.targetRows,
+      sheets.masterRows,
+      fileName,
+      sheets.racingConfigRows,
+    );
   } else {
     transactions = transactionRows(parseCsv(buffer.toString("utf8")));
   }
@@ -574,6 +767,7 @@ export async function importSalesBuffer(buffer: Buffer, fileName: string) {
     stores: new Set(transactions.map((row) => row.siteCode)).size,
     periodStart: periodStart.toISOString(),
     periodEnd: periodEnd.toISOString(),
+    sourceSheet,
     report: report
       ? { storeCode: report.storeCode, month: report.month, year: report.year }
       : null,

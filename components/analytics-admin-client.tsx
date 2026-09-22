@@ -28,6 +28,7 @@ type ReportConfig = {
   brandTargets: Record<string, Record<string, number>>;
   operatorTargets: Record<string, Record<string, number>>;
   racingTargets: Record<string, Record<string, { quantity?: number; amount?: number }>>;
+  racingDefinitions?: Array<{ key: string; label: string; unit: "qty" | "amount" }>;
 };
 type TargetResponse = { stores: StoreOption[]; defaultSelection: null | { storeCode: string; month: number; year: number }; report: null | { config: ReportConfig; sourceFile: string } };
 type TransactionResponse = { rows: TransactionRow[]; total: number; page: number; pageSize: number };
@@ -131,7 +132,7 @@ export function AnalyticsAdminClient() {
       </div>
       <div className="p-4">
         <Link href="/admin/import" className="btn-primary w-full"><Upload size={17} /> Import Excel/CSV</Link>
-        <button type="button" onClick={() => setShowStores((value) => !value)} className="btn-secondary mt-2 w-full"><StoreIcon size={17} /> Master Store ({masterStores.length})</button>
+        <button suppressHydrationWarning type="button" onClick={() => setShowStores((value) => !value)} className="btn-secondary mt-2 w-full"><StoreIcon size={17} /> Master Store ({masterStores.length})</button>
       </div>
       <nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:block lg:space-y-1">
         {MENU.map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => setSection(id)} className={`flex flex-none items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold lg:w-full ${section === id ? "bg-brand-600 text-white shadow-md shadow-red-100" : "text-stone-600 hover:bg-stone-100"}`}><Icon size={19} />{label}{section === id && <ChevronRight size={15} className="ml-auto hidden lg:block" />}</button>)}
@@ -191,7 +192,13 @@ function TargetEditor({ section, store, month, year, report, busy, run, changed 
   const [customKey, setCustomKey] = useState("");
   const [unit, setUnit] = useState<"amount" | "quantity">("amount");
   const [value, setValue] = useState("");
+  const availableKeys = section === "racing" && report?.config.racingDefinitions?.length
+    ? report.config.racingDefinitions.map((definition) => definition.key)
+    : KEYS[section];
   useEffect(() => { if (store?.sales.length && !store.sales.includes(salesName)) setSalesName(store.sales[0]); }, [store, salesName]);
+  useEffect(() => {
+    if (!availableKeys.includes(key)) setKey(availableKeys[0] || "");
+  }, [availableKeys, key]);
   const finalKey = customKey.trim() || key;
   const entries = useMemo<Array<{ key: string; unit?: "amount" | "quantity"; value: number }>>(() => {
     if (!report || !salesName) return [] as Array<{ key: string; unit?: "amount" | "quantity"; value: number }>;
@@ -201,7 +208,7 @@ function TargetEditor({ section, store, month, year, report, busy, run, changed 
   async function save(event: FormEvent) { event.preventDefault(); if (!store || !salesName || !finalKey) return; await run(async () => { await request("/api/admin/report-targets", "PUT", { storeCode: store.code, month, year, salesName, group, key: finalKey, unit, value: Number(value) }); await changed("Target disimpan."); setValue(""); }); }
   async function remove(item: { key: string; unit?: "amount" | "quantity"; value: number }) { if (!store || !confirm(`Hapus target ${item.key}?`)) return; await run(async () => { await request("/api/admin/report-targets", "DELETE", { storeCode: store.code, month, year, salesName, group, key: item.key, unit: item.unit || unit, value: item.value }); await changed("Target dihapus."); }); }
   return <section className="card overflow-hidden"><div className="flex items-center justify-between border-b border-stone-100 px-5 py-4"><div><h3 className="flex items-center gap-2 font-black"><Target size={18} className="text-brand-600" /> Target {SECTION_INFO[section].title}</h3><p className="mt-1 text-xs text-stone-500">{report ? `Sumber: ${report.sourceFile}` : "Belum ada target periode ini; simpan form untuk membuatnya."}</p></div></div>
-    <div className="grid gap-5 p-5 lg:grid-cols-[390px_1fr]"><form onSubmit={save} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><Field label="Sales"><select required className="field" value={salesName} onChange={(e) => setSalesName(e.target.value)}>{store?.sales.map((name) => <option key={name}>{name}</option>)}</select></Field><div className="grid grid-cols-2 gap-2"><Field label="Jenis"><select className="field" value={key} onChange={(e) => { setKey(e.target.value); setCustomKey(""); }}>{KEYS[section].map((name) => <option key={name}>{name}</option>)}</select></Field>{group === "racingTargets" && <Field label="Satuan"><select className="field" value={unit} onChange={(e) => setUnit(e.target.value as "amount" | "quantity")}><option value="amount">Rupiah</option><option value="quantity">Quantity</option></select></Field>}</div><Field label="Jenis lain (opsional)" help="Contoh brand/produk baru di luar pilihan."><input className="field uppercase" placeholder="Kosongkan jika memakai pilihan" value={customKey} onChange={(e) => setCustomKey(e.target.value)} /></Field><Field label={unit === "quantity" && group === "racingTargets" ? "Nilai quantity" : "Nilai target (Rp)"}><input required min="0" className="field" type="number" value={value} onChange={(e) => setValue(e.target.value)} /></Field><button disabled={busy || !store?.sales.length} className="btn-primary"><Save size={15} /> Simpan Target</button></form>
+    <div className="grid gap-5 p-5 lg:grid-cols-[390px_1fr]"><form onSubmit={save} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><Field label="Sales"><select required className="field" value={salesName} onChange={(e) => setSalesName(e.target.value)}>{store?.sales.map((name) => <option key={name}>{name}</option>)}</select></Field><div className="grid grid-cols-2 gap-2"><Field label="Jenis"><select className="field" value={key} onChange={(e) => { setKey(e.target.value); setCustomKey(""); }}>{availableKeys.map((name) => <option key={name}>{name}</option>)}</select></Field>{group === "racingTargets" && <Field label="Satuan"><select className="field" value={unit} onChange={(e) => setUnit(e.target.value as "amount" | "quantity")}><option value="amount">Rupiah</option><option value="quantity">Quantity</option></select></Field>}</div><Field label="Jenis lain (opsional)" help="Contoh brand/produk baru di luar pilihan."><input className="field uppercase" placeholder="Kosongkan jika memakai pilihan" value={customKey} onChange={(e) => setCustomKey(e.target.value)} /></Field><Field label={unit === "quantity" && group === "racingTargets" ? "Nilai quantity" : "Nilai target (Rp)"}><input required min="0" className="field" type="number" value={value} onChange={(e) => setValue(e.target.value)} /></Field><button disabled={busy || !store?.sales.length} className="btn-primary"><Save size={15} /> Simpan Target</button></form>
       <div className="overflow-x-auto rounded-xl border border-stone-200"><table className="w-full min-w-[500px] text-sm"><thead className="bg-stone-900 text-left text-xs uppercase text-white"><tr><th className="p-3">Sales</th><th className="p-3">Jenis</th><th className="p-3 text-right">Target</th><th className="p-3">Aksi</th></tr></thead><tbody>{entries.length ? entries.map((item) => <tr key={`${item.key}-${item.unit}`} className="border-t border-stone-100"><td className="p-3 font-semibold">{salesName}</td><td className="p-3">{item.key}{item.unit ? ` (${item.unit})` : ""}</td><td className="p-3 text-right tabular-nums">{item.unit === "quantity" ? number.format(item.value) : `Rp ${number.format(item.value)}`}</td><td className="p-3"><button onClick={() => remove(item)} className="btn-secondary h-8 text-red-600"><Trash2 size={13} /> Hapus</button></td></tr>) : <tr><td colSpan={4} className="p-8 text-center text-stone-500">Belum ada target untuk sales ini.</td></tr>}</tbody></table></div>
     </div>
   </section>;

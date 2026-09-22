@@ -1,4 +1,4 @@
-import type { ReportConfig } from "./import-sales";
+import type { RacingDefinition, ReportConfig } from "./import-sales";
 import type { AnalyticsData, AnalyticsMetric } from "./analytics-types";
 import { prisma } from "./prisma";
 
@@ -487,43 +487,62 @@ export async function getAnalytics(
     };
   });
 
-  const raceDefinitions = [
+  const fallbackRaceDefinitions: RacingDefinition[] = [
     {
       key: "CAMON_50",
       label: "Tecno Camon 50",
-      unit: "qty" as const,
-      match: (fact: Fact) => fact.articleDescription.includes("CAMON 50"),
+      unit: "qty",
+      articleIncludes: ["CAMON 50"],
     },
     {
       key: "POVA_8",
       label: "Tecno Pova 8",
-      unit: "qty" as const,
-      match: (fact: Fact) => fact.articleDescription.includes("POVA 8"),
+      unit: "qty",
+      articleIncludes: ["POVA 8"],
     },
     {
       key: "MEDPOIN",
       label: "Medpoint Booster",
-      unit: "amount" as const,
-      match: (fact: Fact) => fact.brandName === "MEDPOIN",
+      unit: "amount",
+      brandIncludes: ["MEDPOIN"],
+      amountSource: "gross",
     },
     {
       key: "OPPO",
       label: "Racing OPPO",
-      unit: "amount" as const,
-      match: (fact: Fact) =>
-        fact.brandName === "OPPO" && fact.category === "DEVICE",
+      unit: "amount",
+      brandIncludes: ["OPPO"],
+      category: "DEVICE",
     },
   ];
+  const raceDefinitions = config?.racingDefinitions?.length
+    ? config.racingDefinitions
+    : fallbackRaceDefinitions;
+  const raceMatch = (definition: RacingDefinition, fact: Fact) => {
+    const brandMatches = !definition.brandIncludes?.length
+      || definition.brandIncludes.some((name) => fact.brandName.includes(name.toUpperCase()));
+    const articleMatches = !definition.articleIncludes?.length
+      || definition.articleIncludes.some((name) => fact.articleDescription.includes(name.toUpperCase()));
+    const categoryMatches = !definition.category
+      || canonicalCategory(fact.category) === canonicalCategory(definition.category);
+    const unitAmount = fact.quantity ? fact.amount / Math.abs(fact.quantity) : fact.amount;
+    return brandMatches && articleMatches && categoryMatches
+      && (!definition.minUnitAmount || unitAmount >= definition.minUnitAmount);
+  };
   const racing = raceDefinitions.map((definition) => {
+    const match = (fact: Fact) => raceMatch(definition, fact);
     const value =
-      definition.key === "MEDPOIN"
-        ? sumGrossFacts(facts, definition.match)
-        : sumFacts(facts, definition.match);
+      definition.amountSource === "gross"
+        ? sumGrossFacts(facts, match)
+        : sumFacts(facts, match);
     const actual = definition.unit === "qty" ? value.quantity : value.mtd;
     const target = people.reduce(
       (sum, sales) =>
         sum + raceTarget(config, sales, definition.key, definition.unit),
       0,
+    );
+    const hasQuantityTarget = people.some(
+      (sales) => config?.racingTargets?.[sales]?.[definition.key]?.quantity !== undefined,
     );
     return {
       key: definition.key,
@@ -537,7 +556,7 @@ export async function getAnalytics(
         totalDays,
       ),
       quantityMetric:
-        definition.key === "MEDPOIN"
+        definition.unit === "amount" && hasQuantityTarget
           ? makeMetric(
               people.reduce(
                 (sum, sales) =>
@@ -552,14 +571,14 @@ export async function getAnalytics(
           : null,
       people: people.map((name) => {
         const person =
-          definition.key === "MEDPOIN"
+          definition.amountSource === "gross"
             ? sumGrossFacts(
                 facts,
-                (fact) => fact.salesName === name && definition.match(fact),
+                (fact) => fact.salesName === name && match(fact),
               )
             : sumFacts(
                 facts,
-                (fact) => fact.salesName === name && definition.match(fact),
+                (fact) => fact.salesName === name && match(fact),
               );
         const personActual =
           definition.unit === "qty" ? person.quantity : person.mtd;
@@ -573,7 +592,7 @@ export async function getAnalytics(
             totalDays,
           ),
           quantityMetric:
-            definition.key === "MEDPOIN"
+            definition.unit === "amount" && hasQuantityTarget
               ? makeMetric(
                   raceTarget(config, name, definition.key, "qty"),
                   person.quantity,
