@@ -1,0 +1,39 @@
+SALES PERFORMANCE DASHBOARD - PAKET LOCALHOST
+================================================
+
+File ini adalah petunjuk untuk penerima paket. Pengembang dapat membuat ulang
+arsip distribusi dengan menjalankan BUAT_PAKET_KLIEN.bat.
+
+KEBUTUHAN KOMPUTER
+1. Windows 10/11.
+2. XAMPP terpasang di C:\xampp.
+3. Node.js LTS versi 20 atau lebih baru.
+4. Internet hanya diperlukan saat instalasi pertama untuk npm install.
+
+INSTALASI PERTAMA (HANYA SEKALI)
+1. Jangan mengubah atau memindahkan isi folder data-awal.
+2. Klik dua kali INSTALL_DASHBOARD.bat.
+3. Isi username dan password admin ketika diminta.
+4. Tunggu sampai proses selesai. Proses awal dapat memerlukan beberapa menit.
+5. Installer membuat database, seluruh tabel, mengimpor tiga Excel, melakukan build,
+   membuat shortcut Desktop, dan membuka dashboard.
+
+PEMAKAIAN HARIAN
+- Klik shortcut "Buka Sales Dashboard" di Desktop.
+- Alamat dashboard: http://localhost:3210/dashboard
+- Alamat admin:     http://localhost:3210/admin
+- Untuk berhenti, klik shortcut "Tutup Sales Dashboard".
+
+UPLOAD EXCEL
+- Login Admin lalu buka menu Import Excel/CSV.
+- File XLSX/CSV maksimal 4 MB.
+- Nama sheet transaksi boleh berbeda; sheet MASTER diprioritaskan.
+- Sembilan header wajib harus tersedia pada salah satu dari 30 baris pertama.
+- Program Racing baru dapat dijelaskan melalui sheet RACING_CONFIG pada template.
+- File yang sama aman diunggah ulang; transaksi identik tidak dihitung dua kali.
+
+CATATAN
+- Apache tidak menjalankan aplikasi ini. XAMPP dipakai untuk MariaDB/MySQL.
+- MySQL dinyalakan otomatis oleh shortcut jika belum aktif.
+- Jangan menghapus folder aplikasi, data-awal, .env, node_modules, atau .next.
+- Jika komputer diganti, pindahkan seluruh paket dan jalankan INSTALL_DASHBOARD.bat lagi.

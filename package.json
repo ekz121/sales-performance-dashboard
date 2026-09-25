@@ -15,7 +15,8 @@
     "test:watch": "vitest",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:seed": "prisma db seed"
+    "prisma:seed": "prisma db seed",
+    "local:import": "tsx scripts/import-initial-data.ts data-awal"
   },
   "dependencies": {
     "@prisma/client": "^6.16.1",

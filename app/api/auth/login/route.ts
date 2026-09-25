@@ -25,10 +25,14 @@ export async function POST(request: Request) {
     if (!valid) return NextResponse.json({ message: "Username atau password salah." }, { status: 401, headers: NO_STORE_HEADERS });
 
     const response = NextResponse.json({ ok: true }, { headers: NO_STORE_HEADERS });
+    const forwardedProtocol = request.headers.get("x-forwarded-proto")?.split(",")[0].trim();
+    const isHttps = forwardedProtocol
+      ? forwardedProtocol === "https"
+      : new URL(request.url).protocol === "https:";
     response.cookies.set(AUTH_COOKIE, await createAdminToken(input.username), {
       httpOnly: true,
       sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      secure: isHttps,
       path: "/",
       maxAge: 60 * 60 * 8,
     });

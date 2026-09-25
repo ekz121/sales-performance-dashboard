@@ -11,3 +11,6 @@ coverage
 *.xls
 *.csv
 /revisi/
+/data-awal/
+/.dashboard-local.pid
+/logs/

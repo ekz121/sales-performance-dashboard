@@ -1,6 +1,18 @@
 # Erafone & More Sales Performance Dashboard
 Dashboard untuk melihat target, MTD, proyeksi akhir bulan, achievement, gap, kontribusi kategori, dan growth sales. Dashboard berada di `/dashboard`, sedangkan input dan edit data berada di `/admin`.
 
+## Paket lokal satu-klik untuk klien Windows
+
+Folder distribusi dapat diletakkan di mana saja, termasuk `C:\xampp\htdocs\sales-performance-dashboard`. Apache tidak menjalankan Next.js; launcher menjalankan web pada port khusus 3210 dan XAMPP menyediakan MariaDB/MySQL.
+
+1. Sertakan tiga workbook pada folder `data-awal`.
+2. Klien memasang XAMPP di `C:\xampp` dan Node.js LTS 20+.
+3. Klien menjalankan `INSTALL_DASHBOARD.bat` satu kali. Installer otomatis membuat database/user lokal, seluruh tabel, mengimpor Excel, membuat build produksi, dan membuat shortcut Desktop.
+4. Pemakaian berikutnya cukup klik **Buka Sales Dashboard**. Alamatnya `http://localhost:3210/dashboard`.
+5. Gunakan **Tutup Sales Dashboard** untuk menghentikan web; MySQL tidak dihentikan karena mungkin dipakai aplikasi XAMPP lain.
+
+Petunjuk singkat untuk klien ada di `MULAI-DI-SINI.txt`. File `.env`, `node_modules`, `.next`, log, PID, dan workbook operasional tidak di-commit.
+
 Aplikasi ini adalah aplikasi Next.js, jadi **tidak perlu dipindahkan ke `htdocs`**. XAMPP hanya diperlukan untuk menjalankan MySQL/MariaDB (dan Apache bila ingin memakai phpMyAdmin).
 
 > Baru pertama kali memakai aplikasi? Ikuti [PANDUAN-LOCALHOST.md](./PANDUAN-LOCALHOST.md) dari langkah pertama tanpa dilewati.
