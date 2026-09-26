@@ -1468,8 +1468,10 @@ export function SalesAnalyticsDashboard() {
             <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-sm font-bold text-stone-700">
                 <CalendarDays size={17} className="text-brand-600" />{" "}
-                {data.meta.periodLabel} • Snapshot hari ke-
-                {data.meta.elapsedDays}/{data.meta.totalDays}
+                {data.meta.periodLabel} · Sampai tanggal {current.day}
+                {data.meta.maxDataDay > 0
+                  ? ` · data tersedia tanggal ${data.meta.minDataDay}–${data.meta.maxDataDay}`
+                  : " · belum ada transaksi"}
               </div>
               <div
                 className={`rounded-full px-3 py-1.5 text-xs font-bold ${data.meta.hasTargets ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}
@@ -1478,6 +1480,11 @@ export function SalesAnalyticsDashboard() {
                   ? "Target report tersedia"
                   : "Target belum diimport — actual tetap tampil"}
               </div>
+            </div>
+          )}
+          {data && data.meta.transactionRows === 0 && (
+            <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+              Belum ada transaksi sampai tanggal {current.day}. Target bulanan tetap ditampilkan, sedangkan seluruh actual bernilai 0.
             </div>
           )}
           {error && (

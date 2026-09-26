@@ -24,6 +24,7 @@ export type AnalyticsData = {
     elapsedDays: number;
     totalDays: number;
     maxDataDay: number;
+    minDataDay: number;
     transactionRows: number;
     hasTargets: boolean;
     lastUpdated: string;

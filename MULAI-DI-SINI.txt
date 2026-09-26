@@ -27,14 +27,26 @@ PEMAKAIAN HARIAN
 
 UPLOAD EXCEL
 - Login Admin lalu buka menu Import Excel/CSV.
-- File XLSX/CSV maksimal 4 MB.
-- Nama sheet transaksi boleh berbeda; sheet MASTER diprioritaskan.
-- Sembilan header wajib harus tersedia pada salah satu dari 30 baris pertama.
-- Program Racing baru dapat dijelaskan melalui sheet RACING_CONFIG pada template.
-- File yang sama aman diunggah ulang; transaksi identik tidak dihitung dua kali.
+- File XLSX/CSV maksimal 15 MB.
+- Klik Analisis File terlebih dahulu. Data belum masuk sebelum dikonfirmasi.
+- Nama sheet, urutan kolom, dan posisi header boleh berubah sampai baris ke-100.
+- Jika nama kolom baru belum dikenali, pilih pemetaan lewat dropdown satu kali.
+  Format tersebut disimpan dan otomatis dikenali pada upload berikutnya.
+- Mode Tambah Aman tidak menghapus tanggal yang tidak ada dalam file.
+- Mode Ganti Rentang membackup data lama dan dapat di-rollback.
+- Ringkasan baris, duplikat, store, periode, quantity, dan Rupiah harus diperiksa
+  sebelum klik Konfirmasi Import ke MySQL.
+
+RACING BULANAN
+- Buka Admin > Program Racing Bulanan.
+- Program dapat dibuat, diedit, dihapus, atau disalin dari bulan sebelumnya.
+- Aturan dapat memakai brand, artikel, kategori, batas harga, quantity, atau Rupiah.
+- Isi target per sales melalui menu Target per Sales.
+- Perubahan langsung masuk dashboard tanpa mengubah coding.
 
 CATATAN
 - Apache tidak menjalankan aplikasi ini. XAMPP dipakai untuk MariaDB/MySQL.
 - MySQL dinyalakan otomatis oleh shortcut jika belum aktif.
+- Backup MySQL dibuat otomatis sekali sehari di folder backups (maksimal 30 file).
 - Jangan menghapus folder aplikasi, data-awal, .env, node_modules, atau .next.
 - Jika komputer diganti, pindahkan seluruh paket dan jalankan INSTALL_DASHBOARD.bat lagi.

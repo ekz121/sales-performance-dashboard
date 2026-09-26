@@ -132,6 +132,7 @@ export function AnalyticsAdminClient() {
       </div>
       <div className="p-4">
         <Link href="/admin/import" className="btn-primary w-full"><Upload size={17} /> Import Excel/CSV</Link>
+        <Link href="/admin/racing" className="btn-secondary w-full"><Target size={16} /> Program Racing Bulanan</Link>
         <button suppressHydrationWarning type="button" onClick={() => setShowStores((value) => !value)} className="btn-secondary mt-2 w-full"><StoreIcon size={17} /> Master Store ({masterStores.length})</button>
       </div>
       <nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:block lg:space-y-1">

@@ -48,6 +48,13 @@ if (-not (Test-MySql)) {
   if (-not $Ready) { Show-Error "MySQL XAMPP gagal menyala. Buka XAMPP Control Panel dan periksa MySQL." }
 }
 
+try {
+  & (Join-Path $PSScriptRoot "backup-local.ps1") -Quiet
+} catch {
+  New-Item -ItemType Directory -Path $LogDirectory -Force | Out-Null
+  Add-Content -LiteralPath (Join-Path $LogDirectory "backup-warning.log") -Value "$(Get-Date -Format s) $($_.Exception.Message)"
+}
+
 if (Test-Path -LiteralPath $PidFile) {
   $ExistingPid = [int](Get-Content -LiteralPath $PidFile -ErrorAction SilentlyContinue)
   $ExistingProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $ExistingPid" -ErrorAction SilentlyContinue

@@ -17,7 +17,7 @@ try {
   New-Item -ItemType Directory -Path $ResolvedStaging | Out-Null
 
   & robocopy $ProjectRoot $ResolvedStaging /E `
-    /XD .git node_modules .next logs `
+    /XD .git node_modules .next logs backups import-drafts import-archive `
     /XF .env .dashboard-local.pid .dashboard-local.port *.log *.tsbuildinfo
   if ($LASTEXITCODE -ge 8) { throw "Penyalinan paket gagal (robocopy $LASTEXITCODE)." }
 

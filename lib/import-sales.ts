@@ -5,7 +5,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { syncSalesMaster } from "./sync-sales-master";
 
-const REQUIRED_HEADERS = [
+export const REQUIRED_HEADERS = [
   "site_code",
   "site_desc",
   "sales_name",
@@ -16,6 +16,36 @@ const REQUIRED_HEADERS = [
   "total_nett_amount_exc_tax",
   "cat",
 ] as const;
+
+export const OPTIONAL_HEADERS = [
+  "sales_org",
+  "sales_org_desc",
+  "sales_code",
+  "pos_number",
+  "week",
+  "item_group",
+  "item_group_desc",
+  "article_code",
+  "price",
+  "discount",
+  "total_nett_amount_with_tax",
+  "cat_2",
+  "bu_desc",
+  "sl",
+  "tsh",
+] as const;
+
+export type ImportField = (typeof REQUIRED_HEADERS)[number] | (typeof OPTIONAL_HEADERS)[number];
+export type HeaderMapping = Partial<Record<ImportField, string>>;
+export type ImportMode = "append" | "replace_range";
+
+export type ImportOptions = {
+  mapping?: HeaderMapping;
+  sheetName?: string;
+  headerRow?: number;
+  mode?: ImportMode;
+  saveProfile?: boolean;
+};
 
 const INSERT_CHUNK_SIZE = 2_500;
 
@@ -80,6 +110,33 @@ export type ImportResult = {
   periodStart: string | null;
   periodEnd: string | null;
   sourceSheet: string;
+  importMode: ImportMode;
+  replacedRows: number;
+  totalQuantity: number;
+  totalNettAmount: number;
+  report: { storeCode: string; month: number; year: number } | null;
+};
+
+export type ImportPreview = {
+  fileName: string;
+  sourceSheet: string;
+  sheets: string[];
+  headerRow: number;
+  headers: string[];
+  mapping: HeaderMapping;
+  requiredFields: Array<{ key: (typeof REQUIRED_HEADERS)[number]; label: string }>;
+  missingFields: string[];
+  ready: boolean;
+  validationError: string | null;
+  readRows: number;
+  duplicateRows: number;
+  stores: number;
+  periodStart: string | null;
+  periodEnd: string | null;
+  totalQuantity: number;
+  totalNettAmount: number;
+  dateGaps: string[];
+  detectedType: "master" | "report";
   report: { storeCode: string; month: number; year: number } | null;
 };
 
@@ -141,6 +198,85 @@ function normalizeHeader(value: unknown) {
     .replace(/^_|_$/g, "");
 }
 
+export const IMPORT_FIELD_LABELS: Record<ImportField, string> = {
+  site_code: "Kode store/site",
+  site_desc: "Nama store/site",
+  sales_name: "Nama sales",
+  order_date: "Tanggal transaksi",
+  brand_name: "Nama brand",
+  article_description: "Deskripsi produk/artikel",
+  quantity: "Quantity",
+  total_nett_amount_exc_tax: "Net sales sebelum pajak",
+  cat: "Kategori",
+  sales_org: "Sales organization",
+  sales_org_desc: "Nama sales organization",
+  sales_code: "Kode sales",
+  pos_number: "Nomor transaksi/POS",
+  week: "Minggu",
+  item_group: "Grup produk",
+  item_group_desc: "Nama grup produk",
+  article_code: "Kode artikel",
+  price: "Harga",
+  discount: "Diskon",
+  total_nett_amount_with_tax: "Net sales termasuk pajak",
+  cat_2: "Kategori 2",
+  bu_desc: "Business unit",
+  sl: "Sales leader",
+  tsh: "Territory sales head",
+};
+
+const HEADER_ALIASES: Record<ImportField, string[]> = {
+  site_code: ["site_code", "site", "kode_site", "store_code", "kode_store", "outlet_code", "kode_outlet", "branch_code"],
+  site_desc: ["site_desc", "site_description", "nama_site", "store_name", "nama_store", "outlet_name", "nama_outlet", "branch_name"],
+  sales_name: ["sales_name", "nama_sales", "sales", "salesperson", "sales_person", "promotor", "nama_promotor"],
+  order_date: ["order_date", "tanggal_order", "transaction_date", "tanggal_transaksi", "sales_date", "tanggal", "date"],
+  brand_name: ["brand_name", "nama_brand", "brand", "merk", "merek"],
+  article_description: ["article_description", "article_desc", "deskripsi_artikel", "product_description", "product_name", "nama_produk", "artikel", "produk"],
+  quantity: ["quantity", "qty", "jumlah", "unit", "sales_qty", "quantity_sold"],
+  total_nett_amount_exc_tax: ["total_nett_amount_exc_tax", "total_net_amount_exc_tax", "nett_exc_tax", "net_exc_tax", "net_sales", "nett_sales", "sales_amount", "amount_exc_tax", "dpp"],
+  cat: ["cat", "category", "kategori", "main_category", "kategori_utama"],
+  sales_org: ["sales_org", "sales_organization"],
+  sales_org_desc: ["sales_org_desc", "sales_organization_desc"],
+  sales_code: ["sales_code", "kode_sales", "sales_id", "nik_sales"],
+  pos_number: ["pos_number", "pos_no", "nomor_pos", "transaction_number", "nomor_transaksi", "receipt_number", "nomor_nota", "order_number"],
+  week: ["week", "minggu", "week_number"],
+  item_group: ["item_group", "product_group", "grup_produk"],
+  item_group_desc: ["item_group_desc", "item_group_description", "nama_grup_produk"],
+  article_code: ["article_code", "kode_artikel", "product_code", "sku", "sku_code"],
+  price: ["price", "harga", "unit_price"],
+  discount: ["discount", "diskon", "disc"],
+  total_nett_amount_with_tax: ["total_nett_amount_with_tax", "total_net_amount_with_tax", "nett_with_tax", "gross_sales", "amount_with_tax"],
+  cat_2: ["cat_2", "category_2", "kategori_2", "subcategory", "sub_category"],
+  bu_desc: ["bu_desc", "business_unit", "business_unit_desc"],
+  sl: ["sl", "sales_leader", "leader"],
+  tsh: ["tsh", "territory_sales_head"],
+};
+
+const ALIAS_TO_FIELD = new Map<string, ImportField>();
+for (const field of [...REQUIRED_HEADERS, ...OPTIONAL_HEADERS]) {
+  for (const alias of HEADER_ALIASES[field]) ALIAS_TO_FIELD.set(normalizeHeader(alias), field);
+}
+
+function canonicalHeader(value: unknown, mapping: HeaderMapping = {}): string {
+  const normalized = normalizeHeader(value);
+  const mapped = Object.entries(mapping).find(([, source]) => normalizeHeader(source) === normalized)?.[0];
+  return mapped || ALIAS_TO_FIELD.get(normalized) || normalized;
+}
+
+function bestHeaderRow(rows: SheetRow[], mapping: HeaderMapping = {}) {
+  let best = { index: -1, score: -1, density: 0 };
+  for (let index = 0; index < Math.min(rows.length, 100); index += 1) {
+    const headers = new Set(rows[index].map((value) => canonicalHeader(value, mapping)));
+    const score = REQUIRED_HEADERS.filter((header) => headers.has(header)).length;
+    const density = rows[index].filter((value) => textValue(value)).length;
+    if (score > best.score || (score === best.score && density > best.density)) {
+      best = { index, score, density };
+    }
+    if (score === REQUIRED_HEADERS.length) return { index, score, density };
+  }
+  return best;
+}
+
 function requiredNumber(value: unknown): number | null {
   if (typeof value === "object" && value && "result" in value) {
     return requiredNumber(value.result);
@@ -195,15 +331,16 @@ function parseCsv(source: string): SheetRow[] {
   return rows;
 }
 
-function headerRowIndex(rows: SheetRow[]) {
-  for (let index = 0; index < Math.min(rows.length, 30); index += 1) {
-    const headers = new Set(rows[index].map(normalizeHeader));
-    if (REQUIRED_HEADERS.every((header) => headers.has(header))) return index;
+function headerRowIndex(rows: SheetRow[], mapping: HeaderMapping = {}, preferredRow?: number) {
+  if (preferredRow && preferredRow >= 1 && preferredRow <= rows.length) {
+    const headers = new Set(rows[preferredRow - 1].map((value) => canonicalHeader(value, mapping)));
+    if (REQUIRED_HEADERS.every((header) => headers.has(header))) return preferredRow - 1;
   }
-  return -1;
+  const best = bestHeaderRow(rows, mapping);
+  return best.score === REQUIRED_HEADERS.length ? best.index : -1;
 }
 
-async function readXlsxSheets(buffer: Buffer) {
+async function readXlsxSheets(buffer: Buffer, options: ImportOptions = {}) {
   const reader = new ExcelJS.stream.xlsx.WorkbookReader(Readable.from(buffer), {
     worksheets: "emit",
     sharedStrings: "cache",
@@ -228,29 +365,44 @@ async function readXlsxSheets(buffer: Buffer) {
     sheets.set(name, { name: originalName || name, rows });
   }
 
-  const transactionSheets = Array.from(sheets.values()).filter(
-    ({ rows }) => headerRowIndex(rows) >= 0,
-  );
-  const selected = sheets.get("MASTER") || transactionSheets.sort(
+  const candidates = Array.from(sheets.values()).map((sheet) => ({
+    ...sheet,
+    ...bestHeaderRow(sheet.rows, options.mapping),
+  }));
+  const requested = options.sheetName
+    ? candidates.find((sheet) => sheet.name.toUpperCase() === options.sheetName!.trim().toUpperCase())
+    : null;
+  const complete = candidates.filter((sheet) => sheet.score === REQUIRED_HEADERS.length);
+  const selected = requested || sheets.get("MASTER") || complete.sort(
     (left, right) => right.rows.length - left.rows.length,
-  )[0];
+  )[0] || candidates.sort((left, right) => right.score - left.score || right.rows.length - left.rows.length)[0];
+  const selectedHeader = selected
+    ? (options.headerRow ? options.headerRow - 1 : bestHeaderRow(selected.rows, options.mapping).index)
+    : -1;
   return {
     masterRows: selected?.rows || null,
     sourceSheet: selected?.name || "",
+    sheets: candidates.map((sheet) => sheet.name),
+    headerRow: selectedHeader,
+    headers: selectedHeader >= 0 ? selected!.rows[selectedHeader].map(textValue) : [],
     targetRows: sheets.get("TARGET")?.rows || null,
     racingConfigRows: sheets.get("RACING_CONFIG")?.rows || null,
   };
 }
 
-export function transactionRows(rows: SheetRow[]): TransactionInput[] {
+export function transactionRows(
+  rows: SheetRow[],
+  mapping: HeaderMapping = {},
+  preferredHeaderRow?: number,
+): TransactionInput[] {
   if (!rows.length) throw new ImportValidationError("File tidak memiliki baris data.");
-  const headerIndex = headerRowIndex(rows);
+  const headerIndex = headerRowIndex(rows, mapping, preferredHeaderRow);
   if (headerIndex < 0) {
     throw new ImportValidationError(
-      `Kolom wajib tidak ditemukan pada 30 baris pertama: ${REQUIRED_HEADERS.join(", ")}. Unduh template agar nama kolom sesuai.`,
+      `Kolom wajib belum lengkap pada 100 baris pertama: ${REQUIRED_HEADERS.join(", ")}. Gunakan pemetaan kolom di halaman import.`,
     );
   }
-  const headers = rows[headerIndex].map(normalizeHeader);
+  const headers = rows[headerIndex].map((value) => canonicalHeader(value, mapping));
   const column = new Map(headers.map((header, index) => [header, index]));
   const missing = REQUIRED_HEADERS.filter((header) => !column.has(header));
   if (missing.length) {
@@ -380,10 +532,10 @@ function keyValue(value: string) {
   return value.replace(/[^A-Z0-9]+/g, "_").replace(/^_|_$/g, "");
 }
 
-function transactionSales(master: SheetRow[]) {
-  const headerIndex = headerRowIndex(master);
+function transactionSales(master: SheetRow[], mapping: HeaderMapping = {}) {
+  const headerIndex = headerRowIndex(master, mapping);
   if (headerIndex < 0) return new Set<string>();
-  const headers = master[headerIndex].map(normalizeHeader);
+  const headers = master[headerIndex].map((value) => canonicalHeader(value, mapping));
   const salesColumn = headers.indexOf("sales_name");
   return new Set(
     master.slice(headerIndex + 1).map((row) => textValue(row[salesColumn]).trim()).filter(Boolean),
@@ -532,12 +684,17 @@ function parseExplicitRacing(rows: SheetRow[] | null) {
   return definitions.size ? { targets, definitions: Array.from(definitions.values()) } : null;
 }
 
-function extractRacing(target: SheetRow[], master: SheetRow[], explicitRows: SheetRow[] | null) {
+function extractRacing(
+  target: SheetRow[],
+  master: SheetRow[],
+  explicitRows: SheetRow[] | null,
+  mapping: HeaderMapping = {},
+) {
   const explicit = parseExplicitRacing(explicitRows);
   if (explicit) return explicit;
   const targets: ReportConfig["racingTargets"] = {};
   const definitions = new Map<string, RacingDefinition>();
-  const knownSales = transactionSales(master);
+  const knownSales = transactionSales(master, mapping);
   for (let titleIndex = 0; titleIndex < target.length; titleIndex += 1) {
     const program = upper(target[titleIndex][0]);
     if (!/^TARGET\s+(?:RACING\s+)?(?:TECNO|VIVO|MEDPOIN|(?:FBE\s+)?OPPO)\b/.test(program)) continue;
@@ -581,6 +738,7 @@ export function extractReport(
   master: SheetRow[],
   fileName: string,
   racingConfigRows: SheetRow[] | null = null,
+  mapping: HeaderMapping = {},
 ): {
   storeCode: string;
   storeName: string;
@@ -603,9 +761,9 @@ export function extractReport(
   }
 
   let storeName = `ERAFONE & MORE ${storeCode}`;
-  const masterHeader = headerRowIndex(master);
+  const masterHeader = headerRowIndex(master, mapping);
   if (masterHeader >= 0) {
-    const headers = master[masterHeader].map(normalizeHeader);
+    const headers = master[masterHeader].map((value) => canonicalHeader(value, mapping));
     const codeColumn = headers.indexOf("site_code");
     const nameColumn = headers.indexOf("site_desc");
     const match = master.slice(masterHeader + 1).find((row) => upper(row[codeColumn]) === storeCode);
@@ -615,7 +773,7 @@ export function extractReport(
   const categoryTargets = extractCategoryTargets(target);
   const brandTargets = extractBrandTargets(target);
   const operatorTargets = extractOperatorTargets(target);
-  const racing = extractRacing(target, master, racingConfigRows);
+  const racing = extractRacing(target, master, racingConfigRows, mapping);
 
   return {
     storeCode,
@@ -633,20 +791,43 @@ export function extractReport(
   };
 }
 
-export async function importSalesBuffer(buffer: Buffer, fileName: string) {
+type ParsedImport = {
+  extension: "xlsx" | "csv";
+  transactions: TransactionInput[];
+  report: ReturnType<typeof extractReport>;
+  sourceSheet: string;
+  sheets: string[];
+  headerRow: number;
+  headers: string[];
+  mapping: HeaderMapping;
+  signature: string;
+};
+
+function suggestedMapping(headers: string[], supplied: HeaderMapping = {}): HeaderMapping {
+  const result: HeaderMapping = { ...supplied };
+  for (const raw of headers) {
+    const field = ALIAS_TO_FIELD.get(normalizeHeader(raw));
+    if (field && !result[field]) result[field] = raw;
+  }
+  return result;
+}
+
+function mappingSignature(headers: string[]) {
+  return createHash("sha256")
+    .update(JSON.stringify(headers.map(normalizeHeader)))
+    .digest("hex");
+}
+
+async function inspectSource(buffer: Buffer, fileName: string, options: ImportOptions = {}) {
   const extension = fileName.split(".").pop()?.toLowerCase();
   if (!extension || !["xlsx", "csv"].includes(extension)) {
     throw new ImportValidationError("Format file harus .xlsx atau .csv.");
   }
 
-  let transactions: TransactionInput[];
-  let report: ReturnType<typeof extractReport> = null;
-  let sourceSheet = "CSV";
-
   if (extension === "xlsx") {
     let sheets: Awaited<ReturnType<typeof readXlsxSheets>>;
     try {
-      sheets = await readXlsxSheets(buffer);
+      sheets = await readXlsxSheets(buffer, options);
     } catch {
       throw new ImportValidationError(
         "File Excel rusak, memakai password, atau bukan workbook .xlsx yang valid.",
@@ -654,24 +835,209 @@ export async function importSalesBuffer(buffer: Buffer, fileName: string) {
     }
     if (!sheets.masterRows) {
       throw new ImportValidationError(
-        "Tidak ditemukan sheet berisi 9 kolom wajib transaksi. Nama sheet boleh apa saja; gunakan template untuk susunan header yang didukung.",
+        "Workbook tidak memiliki sheet yang dapat dibaca.",
       );
     }
-    sourceSheet = sheets.sourceSheet;
-    transactions = transactionRows(sheets.masterRows);
-    report = extractReport(
-      sheets.targetRows,
-      sheets.masterRows,
-      fileName,
-      sheets.racingConfigRows,
-    );
-  } else {
-    transactions = transactionRows(parseCsv(buffer.toString("utf8")));
+    return {
+      extension: extension as "xlsx",
+      rows: sheets.masterRows,
+      targetRows: sheets.targetRows,
+      racingConfigRows: sheets.racingConfigRows,
+      sourceSheet: sheets.sourceSheet,
+      sheets: sheets.sheets,
+      headerRow: sheets.headerRow + 1,
+      headers: sheets.headers,
+    };
   }
 
-  const dates = transactions.map((row) => new Date(row.orderDate).getTime());
-  const periodStart = new Date(Math.min(...dates));
-  const periodEnd = new Date(Math.max(...dates));
+  const rows = parseCsv(buffer.toString("utf8"));
+  const best = bestHeaderRow(rows, options.mapping);
+  const headerIndex = options.headerRow ? options.headerRow - 1 : best.index;
+  return {
+    extension: extension as "csv",
+    rows,
+    targetRows: null,
+    racingConfigRows: null,
+    sourceSheet: "CSV",
+    sheets: ["CSV"],
+    headerRow: headerIndex + 1,
+    headers: headerIndex >= 0 ? rows[headerIndex].map(textValue) : [],
+  };
+}
+
+async function parseImport(
+  buffer: Buffer,
+  fileName: string,
+  options: ImportOptions = {},
+): Promise<ParsedImport> {
+  let inspected = await inspectSource(buffer, fileName, options);
+  let signature = mappingSignature(inspected.headers);
+  let mapping = suggestedMapping(inspected.headers, options.mapping);
+
+  if (!options.mapping || !Object.keys(options.mapping).length) {
+    const profile = await prisma.importProfile.findUnique({ where: { signature } });
+    if (profile) {
+      const profileMapping = profile.mapping as HeaderMapping;
+      inspected = await inspectSource(buffer, fileName, {
+        ...options,
+        mapping: profileMapping,
+        sheetName: profile.sheetName || options.sheetName,
+        headerRow: profile.headerRow || options.headerRow,
+      });
+      signature = mappingSignature(inspected.headers);
+      mapping = suggestedMapping(inspected.headers, profileMapping);
+    }
+  }
+
+  const transactions = transactionRows(inspected.rows, mapping, inspected.headerRow);
+  const report = extractReport(
+    inspected.targetRows,
+    inspected.rows,
+    fileName,
+    inspected.racingConfigRows,
+    mapping,
+  );
+  return {
+    extension: inspected.extension,
+    transactions,
+    report,
+    sourceSheet: inspected.sourceSheet,
+    sheets: inspected.sheets,
+    headerRow: inspected.headerRow,
+    headers: inspected.headers,
+    mapping,
+    signature,
+  };
+}
+
+async function existingFingerprints(transactions: TransactionInput[]) {
+  const existing = new Set<string>();
+  for (let index = 0; index < transactions.length; index += INSERT_CHUNK_SIZE) {
+    const rows = await prisma.salesTransaction.findMany({
+      where: { fingerprint: { in: transactions.slice(index, index + INSERT_CHUNK_SIZE).map((row) => row.fingerprint) } },
+      select: { fingerprint: true },
+    });
+    for (const row of rows) existing.add(row.fingerprint);
+  }
+  return existing;
+}
+
+function transactionSummary(transactions: TransactionInput[]) {
+  const timestamps = transactions.map((row) => new Date(row.orderDate).getTime());
+  const periodStart = new Date(Math.min(...timestamps));
+  const periodEnd = new Date(Math.max(...timestamps));
+  const dates = new Set(transactions.map((row) => new Date(row.orderDate).toISOString().slice(0, 10)));
+  const gaps: string[] = [];
+  for (let cursor = periodStart.getTime(); cursor <= periodEnd.getTime(); cursor += 86_400_000) {
+    const date = new Date(cursor).toISOString().slice(0, 10);
+    if (!dates.has(date)) gaps.push(date);
+  }
+  return {
+    periodStart,
+    periodEnd,
+    stores: new Set(transactions.map((row) => row.siteCode)).size,
+    totalQuantity: transactions.reduce((sum, row) => sum + Number(row.quantity), 0),
+    totalNettAmount: transactions.reduce((sum, row) => sum + Number(row.totalNettAmountExcTax), 0),
+    dateGaps: gaps.slice(0, 31),
+  };
+}
+
+export async function previewSalesBuffer(
+  buffer: Buffer,
+  fileName: string,
+  options: ImportOptions = {},
+): Promise<ImportPreview> {
+  const inspected = await inspectSource(buffer, fileName, options);
+  const signature = mappingSignature(inspected.headers);
+  const profile = !options.mapping || !Object.keys(options.mapping).length
+    ? await prisma.importProfile.findUnique({ where: { signature } })
+    : null;
+  const mapping = suggestedMapping(
+    inspected.headers,
+    options.mapping || (profile?.mapping as HeaderMapping | undefined) || {},
+  );
+  const missingFields = REQUIRED_HEADERS.filter((field) => !mapping[field]);
+  const base = {
+    fileName,
+    sourceSheet: inspected.sourceSheet,
+    sheets: inspected.sheets,
+    headerRow: inspected.headerRow,
+    headers: inspected.headers,
+    mapping,
+    requiredFields: REQUIRED_HEADERS.map((key) => ({ key, label: IMPORT_FIELD_LABELS[key] })),
+    missingFields,
+  };
+  if (missingFields.length) {
+    return {
+      ...base,
+      ready: false,
+      validationError: "Petakan seluruh kolom wajib sebelum melanjutkan.",
+      readRows: 0,
+      duplicateRows: 0,
+      stores: 0,
+      periodStart: null,
+      periodEnd: null,
+      totalQuantity: 0,
+      totalNettAmount: 0,
+      dateGaps: [],
+      detectedType: "master",
+      report: null,
+    };
+  }
+  try {
+    const parsed = await parseImport(buffer, fileName, { ...options, mapping });
+    const summary = transactionSummary(parsed.transactions);
+    const existing = await existingFingerprints(parsed.transactions);
+    return {
+      ...base,
+      sourceSheet: parsed.sourceSheet,
+      headerRow: parsed.headerRow,
+      mapping: parsed.mapping,
+      ready: true,
+      validationError: null,
+      readRows: parsed.transactions.length,
+      duplicateRows: existing.size,
+      stores: summary.stores,
+      periodStart: summary.periodStart.toISOString(),
+      periodEnd: summary.periodEnd.toISOString(),
+      totalQuantity: summary.totalQuantity,
+      totalNettAmount: summary.totalNettAmount,
+      dateGaps: summary.dateGaps,
+      detectedType: parsed.report ? "report" : "master",
+      report: parsed.report
+        ? { storeCode: parsed.report.storeCode, month: parsed.report.month, year: parsed.report.year }
+        : null,
+    };
+  } catch (error) {
+    return {
+      ...base,
+      ready: false,
+      validationError: error instanceof Error ? error.message : "File belum dapat divalidasi.",
+      readRows: 0,
+      duplicateRows: 0,
+      stores: 0,
+      periodStart: null,
+      periodEnd: null,
+      totalQuantity: 0,
+      totalNettAmount: 0,
+      dateGaps: [],
+      detectedType: "master",
+      report: null,
+    };
+  }
+}
+
+export async function importSalesBuffer(
+  buffer: Buffer,
+  fileName: string,
+  options: ImportOptions = {},
+) {
+  const parsed = await parseImport(buffer, fileName, options);
+  const { transactions, report, sourceSheet, extension } = parsed;
+  const summary = transactionSummary(transactions);
+  const { periodStart, periodEnd, totalQuantity, totalNettAmount } = summary;
+  const mode: ImportMode = options.mode === "replace_range" ? "replace_range" : "append";
+
   const persisted = await prisma.$transaction(
     async (database) => {
       const existingReport = report
@@ -683,19 +1049,89 @@ export async function importSalesBuffer(buffer: Buffer, fileName: string) {
                 year: report.year,
               },
             },
-            select: { id: true },
           })
         : null;
+      const profile = options.saveProfile === false
+        ? null
+        : await database.importProfile.upsert({
+            where: { signature: parsed.signature },
+            create: {
+              signature: parsed.signature,
+              name: fileName.replace(/\.[^.]+$/, ""),
+              sheetName: sourceSheet,
+              headerRow: parsed.headerRow,
+              mapping: parsed.mapping as Prisma.InputJsonValue,
+            },
+            update: {
+              name: fileName.replace(/\.[^.]+$/, ""),
+              sheetName: sourceSheet,
+              headerRow: parsed.headerRow,
+              mapping: parsed.mapping as Prisma.InputJsonValue,
+            },
+          });
+
       const batch = await database.importBatch.create({
         data: {
           fileName,
           fileType: extension,
           rowCount: transactions.length,
           insertedCount: 0,
+          duplicateCount: 0,
+          importMode: mode,
+          totalQuantity,
+          totalNettAmount,
           periodStart,
           periodEnd,
+          profileId: profile?.id,
         },
       });
+
+      let replacedRows = 0;
+      let replacedBackup: unknown[] = [];
+      if (mode === "replace_range") {
+        const scopes = new Map<string, { start: Date; end: Date }>();
+        for (const row of transactions) {
+          const orderDate = new Date(row.orderDate);
+          const existing = scopes.get(row.siteCode);
+          if (!existing) scopes.set(row.siteCode, { start: orderDate, end: orderDate });
+          else {
+            if (orderDate < existing.start) existing.start = orderDate;
+            if (orderDate > existing.end) existing.end = orderDate;
+          }
+        }
+        const replaceWhere = {
+          OR: Array.from(scopes, ([siteCode, scope]) => ({
+            siteCode,
+            orderDate: { gte: scope.start, lt: new Date(scope.end.getTime() + 86_400_000) },
+          })),
+        };
+        const backupRows = await database.salesTransaction.findMany({ where: replaceWhere });
+        replacedBackup = backupRows;
+        replacedRows = backupRows.length;
+        if (backupRows.length) {
+          const affected = new Map<number, number>();
+          for (const row of backupRows) {
+            affected.set(row.importBatchId, (affected.get(row.importBatchId) || 0) + 1);
+          }
+          await database.salesTransaction.deleteMany({ where: replaceWhere });
+          for (const [importBatchId, count] of affected) {
+            await database.importBatch.update({
+              where: { id: importBatchId },
+              data: { insertedCount: { decrement: count } },
+            });
+          }
+        }
+      }
+
+      if (replacedBackup.length || existingReport) {
+        await database.importReplacementBackup.create({
+          data: {
+            importBatchId: batch.id,
+            rowCount: replacedBackup.length,
+            payload: JSON.stringify({ transactions: replacedBackup, report: existingReport }),
+          },
+        });
+      }
 
       let insertedRows = 0;
       for (let index = 0; index < transactions.length; index += INSERT_CHUNK_SIZE) {
@@ -711,48 +1147,40 @@ export async function importSalesBuffer(buffer: Buffer, fileName: string) {
       await syncSalesMaster(transactions, database);
 
       if (report) {
-        if (!insertedRows && existingReport) {
-          await database.reportDataset.update({
-            where: { id: existingReport.id },
-            data: {
-              storeName: report.storeName,
-              sourceFile: report.sourceFile,
-              config: report.config as Prisma.InputJsonValue,
+        await database.reportDataset.upsert({
+          where: {
+            storeCode_month_year: {
+              storeCode: report.storeCode,
+              month: report.month,
+              year: report.year,
             },
-          });
-        } else {
-          await database.reportDataset.upsert({
-            where: {
-              storeCode_month_year: {
-                storeCode: report.storeCode,
-                month: report.month,
-                year: report.year,
-              },
-            },
-            create: {
-              ...report,
-              config: report.config as Prisma.InputJsonValue,
-              importBatchId: batch.id,
-            },
-            update: {
-              ...report,
-              config: report.config as Prisma.InputJsonValue,
-              importBatchId: batch.id,
-            },
-          });
-        }
+          },
+          create: {
+            ...report,
+            config: report.config as Prisma.InputJsonValue,
+            importBatchId: batch.id,
+          },
+          update: {
+            ...report,
+            config: report.config as Prisma.InputJsonValue,
+            importBatchId: batch.id,
+          },
+        });
       }
 
-      if (!insertedRows && (!report || existingReport)) {
+      if (!insertedRows && !replacedRows && !report) {
         await database.importBatch.delete({ where: { id: batch.id } });
-        return { batchId: null, insertedRows };
+        return { batchId: null, insertedRows, replacedRows };
       }
 
       await database.importBatch.update({
         where: { id: batch.id },
-        data: { insertedCount: insertedRows },
+        data: {
+          insertedCount: insertedRows,
+          duplicateCount: transactions.length - insertedRows,
+        },
       });
-      return { batchId: batch.id, insertedRows };
+      return { batchId: batch.id, insertedRows, replacedRows };
     },
     { maxWait: 10_000, timeout: 120_000 },
   );
@@ -768,6 +1196,10 @@ export async function importSalesBuffer(buffer: Buffer, fileName: string) {
     periodStart: periodStart.toISOString(),
     periodEnd: periodEnd.toISOString(),
     sourceSheet,
+    importMode: mode,
+    replacedRows: persisted.replacedRows,
+    totalQuantity,
+    totalNettAmount,
     report: report
       ? { storeCode: report.storeCode, month: report.month, year: report.year }
       : null,

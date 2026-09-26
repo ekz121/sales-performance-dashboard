@@ -229,6 +229,9 @@ export async function getAnalytics(
   const maxDataDay = monthRows.length
     ? Math.max(...monthRows.map((row) => row.orderDate.getUTCDate()))
     : 0;
+  const minDataDay = monthRows.length
+    ? Math.min(...monthRows.map((row) => row.orderDate.getUTCDate()))
+    : 0;
   const requestedDay = Number(searchParams.get("day") || 0);
   const day =
     Number.isInteger(requestedDay) &&
@@ -260,10 +263,18 @@ export async function getAnalytics(
     amount: Number(row.totalNettAmountExcTax),
     grossAmount: Number(row.totalNettAmountWithTax),
   }));
-  const people = Array.from(new Set(facts.map((fact) => fact.salesName))).sort(
+  const configuredPeople = config
+    ? [
+        ...Object.keys(config.categoryTargets || {}),
+        ...Object.keys(config.brandTargets || {}),
+        ...Object.keys(config.operatorTargets || {}),
+        ...Object.keys(config.racingTargets || {}),
+      ]
+    : [];
+  const people = Array.from(new Set([...facts.map((fact) => fact.salesName), ...configuredPeople])).sort(
     (a, b) => a.localeCompare(b, "id"),
   );
-  const elapsedDays = rows.length ? day : 0;
+  const elapsedDays = rows.length ? Math.min(day, maxDataDay) : 0;
 
   const allCategoryMtd = sumFacts(facts, (fact) =>
     CATEGORIES.some(
@@ -695,6 +706,7 @@ export async function getAnalytics(
       elapsedDays,
       totalDays,
       maxDataDay,
+      minDataDay,
       transactionRows: rows.length,
       hasTargets: Boolean(report),
       lastUpdated: new Date().toISOString(),

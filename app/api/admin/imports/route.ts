@@ -1,12 +1,29 @@
 import type { NextRequest } from "next/server";
 import { isAdminRequest } from "@/lib/auth";
 import { apiError, noStoreJson, revalidateDashboard } from "@/lib/api";
-import { ImportValidationError, importSalesBuffer } from "@/lib/import-sales";
+import { archiveImportDraft, deleteImportDraft, readImportDraft } from "@/lib/import-drafts";
+import {
+  ImportValidationError,
+  importSalesBuffer,
+  type HeaderMapping,
+  type ImportMode,
+} from "@/lib/import-sales";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 300;
+
+const MAX_FILE_SIZE = 15 * 1024 * 1024;
+
+function parseMapping(value: FormDataEntryValue | null): HeaderMapping | undefined {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const parsed = JSON.parse(value) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new ImportValidationError("Pemetaan kolom tidak valid.");
+  }
+  return parsed as HeaderMapping;
+}
 
 export async function GET(request: NextRequest) {
   if (!(await isAdminRequest(request))) {
@@ -33,17 +50,38 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get("file");
-    if (!(file instanceof File)) {
+    const draftId = String(formData.get("draftId") || "");
+    let buffer: Buffer;
+    let fileName: string;
+    if (draftId) {
+      ({ buffer, meta: { fileName } } = await readImportDraft(draftId));
+    } else if (file instanceof File && file.size > 0) {
+      if (file.size > MAX_FILE_SIZE) {
+        return noStoreJson({ message: "Ukuran file maksimal 15 MB untuk instalasi localhost." }, { status: 413 });
+      }
+      buffer = Buffer.from(await file.arrayBuffer());
+      fileName = file.name;
+    } else {
       return noStoreJson({ message: "Pilih file Excel atau CSV terlebih dahulu." }, { status: 400 });
-    }
-    if (file.size > 4 * 1024 * 1024) {
-      return noStoreJson({ message: "Ukuran file maksimal 4 MB agar aman di localhost dan Netlify." }, { status: 413 });
     }
 
     const result = await importSalesBuffer(
-      Buffer.from(await file.arrayBuffer()),
-      file.name,
+      buffer,
+      fileName,
+      {
+        mapping: parseMapping(formData.get("mapping")),
+        sheetName: String(formData.get("sheetName") || "") || undefined,
+        headerRow: Number(formData.get("headerRow")) || undefined,
+        mode: (String(formData.get("mode") || "append") === "replace_range"
+          ? "replace_range"
+          : "append") as ImportMode,
+        saveProfile: true,
+      },
     );
+    if (draftId) {
+      await archiveImportDraft(draftId, result.batchId);
+      await deleteImportDraft(draftId);
+    }
     revalidateDashboard();
     return noStoreJson(result, { status: 201 });
   } catch (error) {

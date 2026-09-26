@@ -15,3 +15,6 @@ coverage
 /.dashboard-local.pid
 /.dashboard-local.port
 /logs/
+/data/import-drafts/
+/data/import-archive/
+/backups/

@@ -61,12 +61,27 @@ try {
   }
 
   $RootPassword = ""
-  $AppPasswordBytes = New-Object byte[] 24
+  $PathHasher = [Security.Cryptography.SHA256]::Create()
+  try { $PathHash = $PathHasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($ProjectRoot.ToLowerInvariant())) }
+  finally { $PathHasher.Dispose() }
+  $PathHashText = [BitConverter]::ToString($PathHash).Replace("-", "").ToLowerInvariant()
+  $AppUser = "erafone_" + $PathHashText.Substring(0, 12)
   $Random = [Security.Cryptography.RandomNumberGenerator]::Create()
-  $Random.GetBytes($AppPasswordBytes)
-  $AppPassword = ([Convert]::ToBase64String($AppPasswordBytes) -replace '[^A-Za-z0-9]', '').Substring(0, 28)
+  $ExistingEnvironment = Join-Path $ProjectRoot ".env"
+  $AppPassword = ""
+  if (Test-Path -LiteralPath $ExistingEnvironment) {
+    $ExistingText = Get-Content -LiteralPath $ExistingEnvironment -Raw
+    $Pattern = 'DATABASE_URL="mysql://' + [Regex]::Escape($AppUser) + ':([A-Za-z0-9]+)@127\.0\.0\.1:3306/erafone_dashboard"'
+    $Match = [Regex]::Match($ExistingText, $Pattern)
+    if ($Match.Success) { $AppPassword = $Match.Groups[1].Value }
+  }
+  if (-not $AppPassword) {
+    $AppPasswordBytes = New-Object byte[] 24
+    $Random.GetBytes($AppPasswordBytes)
+    $AppPassword = ([Convert]::ToBase64String($AppPasswordBytes) -replace '[^A-Za-z0-9]', '').Substring(0, 28)
+  }
   $DatabaseName = "erafone_dashboard"
-  $Sql = "CREATE DATABASE IF NOT EXISTS $DatabaseName CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE USER IF NOT EXISTS 'erafone_app'@'127.0.0.1' IDENTIFIED BY '$AppPassword'; ALTER USER 'erafone_app'@'127.0.0.1' IDENTIFIED BY '$AppPassword'; GRANT ALL PRIVILEGES ON $DatabaseName.* TO 'erafone_app'@'127.0.0.1'; FLUSH PRIVILEGES;"
+  $Sql = "CREATE DATABASE IF NOT EXISTS $DatabaseName CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE USER IF NOT EXISTS '$AppUser'@'127.0.0.1' IDENTIFIED BY '$AppPassword'; ALTER USER '$AppUser'@'127.0.0.1' IDENTIFIED BY '$AppPassword'; GRANT ALL PRIVILEGES ON $DatabaseName.* TO '$AppUser'@'127.0.0.1'; FLUSH PRIVILEGES;"
 
   function Initialize-Database([string]$Password) {
     $Previous = $env:MYSQL_PWD
@@ -100,12 +115,14 @@ try {
   $SafeAdminUser = $AdminUser.Replace("\", "\\").Replace('"', '\"')
   $SafeAdminPassword = $AdminPassword.Replace("\", "\\").Replace('"', '\"')
   $EnvironmentText = @"
-DATABASE_URL="mysql://erafone_app:$AppPassword@127.0.0.1:3306/$DatabaseName"
+DATABASE_URL="mysql://$AppUser`:$AppPassword@127.0.0.1:3306/$DatabaseName"
 ADMIN_USERNAME="$SafeAdminUser"
 ADMIN_PASSWORD="$SafeAdminPassword"
 AUTH_SECRET="$AuthSecret"
 "@
   [IO.File]::WriteAllText((Join-Path $ProjectRoot ".env"), $EnvironmentText, (New-Object Text.UTF8Encoding($false)))
+
+  & (Join-Path $PSScriptRoot "backup-local.ps1") -Quiet
 
   $DataDirectory = Join-Path $ProjectRoot "data-awal"
   $RequiredFiles = @(

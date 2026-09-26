@@ -68,13 +68,42 @@ model ImportBatch {
   fileType       String             @db.VarChar(12)
   rowCount       Int
   insertedCount  Int
+  duplicateCount Int                @default(0)
+  importMode      String             @default("append") @db.VarChar(20)
+  totalQuantity   Int                @default(0)
+  totalNettAmount Decimal            @default(0) @db.Decimal(20, 2)
   periodStart    DateTime?
   periodEnd      DateTime?
   createdAt      DateTime           @default(now())
+  profileId      Int?
+  profile        ImportProfile?     @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  replacementBackup ImportReplacementBackup?
   transactions   SalesTransaction[]
   reportDatasets ReportDataset[]
 
   @@index([createdAt])
+  @@index([profileId])
+}
+
+model ImportReplacementBackup {
+  id            Int         @id @default(autoincrement())
+  importBatchId Int         @unique
+  importBatch   ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  rowCount      Int
+  payload       String      @db.LongText
+  createdAt     DateTime    @default(now())
+}
+
+model ImportProfile {
+  id        Int           @id @default(autoincrement())
+  signature String        @unique @db.Char(64)
+  name      String        @db.VarChar(180)
+  sheetName String?       @db.VarChar(120)
+  headerRow Int?
+  mapping   Json
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  batches   ImportBatch[]
 }
 
 model SalesTransaction {

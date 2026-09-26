@@ -53,6 +53,31 @@ describe("transactionRows", () => {
     expect(rows[0].siteCode).toBe("M221");
   });
 
+  it("menerima alias header Indonesia dan header setelah baris ke-30", () => {
+    const intro = Array.from({ length: 40 }, (_, index) => [`Judul laporan ${index + 1}`]);
+    const rows = transactionRows([
+      ...intro,
+      ["Kode Store", "Nama Store", "Nama Sales", "Tanggal Transaksi", "Merk", "Nama Produk", "Qty", "Net Sales", "Kategori"],
+      ["M221", "Erafone Sangatta", "Sales A", "15/09/2026", "VIVO", "Vivo Test", 2, 6_000_000, "DEVICE"],
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ siteCode: "M221", quantity: 2, totalNettAmountExcTax: 6_000_000 });
+  });
+
+  it("menerima pemetaan manual untuk nama header yang sepenuhnya khusus", () => {
+    const customHeaders = ["CabangX", "NamaCabangX", "PetugasX", "HariX", "MerekX", "BarangX", "UnitX", "OmzetX", "KelompokX"];
+    const rows = transactionRows([
+      customHeaders,
+      ["M221", "Erafone Sangatta", "Sales A", "15/09/2026", "VIVO", "Vivo Test", 1, 3_000_000, "DEVICE"],
+    ], {
+      site_code: "CabangX", site_desc: "NamaCabangX", sales_name: "PetugasX",
+      order_date: "HariX", brand_name: "MerekX", article_description: "BarangX",
+      quantity: "UnitX", total_nett_amount_exc_tax: "OmzetX", cat: "KelompokX",
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].brandName).toBe("VIVO");
+  });
+
   it("memberi fingerprint sama untuk transaksi sama dengan kolom tambahan", () => {
     const data = ["M221", "Erafone Sangatta", "Sales A", "01/09/2026", "VIVO", "Vivo V Test", 1, 3_500_000, "DEVICE"];
     const basic = transactionRows([headers, data]);

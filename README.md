@@ -7,7 +7,7 @@ Folder distribusi dapat diletakkan di mana saja, termasuk `C:\xampp\htdocs\sales
 
 1. Sertakan tiga workbook pada folder `data-awal`.
 2. Klien memasang XAMPP di `C:\xampp` dan Node.js LTS 20+.
-3. Klien menjalankan `INSTALL_DASHBOARD.bat` satu kali. Installer otomatis membuat database/user lokal, seluruh tabel, mengimpor Excel, membuat build produksi, dan membuat shortcut Desktop.
+3. Klien menjalankan `INSTALL_DASHBOARD.bat` satu kali. Installer otomatis membuat database `erafone_dashboard`, akun MySQL unik untuk folder instalasi, seluruh tabel, mengimpor Excel, membuat build produksi, dan membuat shortcut Desktop.
 4. Pemakaian berikutnya cukup klik **Buka Sales Dashboard**. Alamatnya `http://localhost:3210/dashboard`.
 5. Gunakan **Tutup Sales Dashboard** untuk menghentikan web; MySQL tidak dihentikan karena mungkin dipakai aplikasi XAMPP lain.
 
@@ -21,7 +21,7 @@ Aplikasi ini adalah aplikasi Next.js, jadi **tidak perlu dipindahkan ke `htdocs`
 
 ## Perintah cepat untuk pengguna yang sudah siap
 
-Pastikan Node.js 20.9+, MySQL aktif, database `erafone` sudah dibuat, dan `.env` sudah benar.
+Pastikan Node.js 20.9+, MySQL aktif, database sudah dibuat, dan `.env` sudah benar. Untuk instalasi klien gunakan installer satu-klik; perintah manual berikut hanya untuk pengembangan.
 
 ```bash
 npm install
@@ -36,6 +36,7 @@ Alamat utama:
 - Dashboard analytics: `http://localhost:3000/dashboard`
 - Login admin: `http://localhost:3000/admin`
 - Import Excel/CSV dan rollback batch: `http://localhost:3000/admin/import`
+- Pengaturan program Racing bulanan: `http://localhost:3000/admin/racing`
 - Admin terpadu lima menu + Master Store: `http://localhost:3000/admin`
 - CRUD transaksi tabel lengkap: `http://localhost:3000/admin/transactions`
 - CRUD target tabel lengkap: `http://localhost:3000/admin/report-targets`
@@ -82,22 +83,21 @@ npx tsc --noEmit
 npm run build
 ```
 
-## Format impor Excel/CSV
+## Impor Excel/CSV fleksibel
 
-Halaman `/admin/import` menerima `.xlsx` dan `.csv` maksimal 4 MB. Untuk Excel, gunakan sheet `MASTER` dan letakkan header pada baris pertama. Sembilan kolom wajibnya adalah `site_code`, `site_desc`, `sales_name`, `order_date`, `brand_name`, `article_description`, `quantity`, `total_nett_amount_exc_tax`, dan `CAT`. Template yang dapat diunduh dari halaman import sudah memuat seluruh 24 kolom yang didukung beserta contoh dan petunjuk.
+Halaman `/admin/import` menerima `.xlsx` dan `.csv` maksimal 15 MB melalui wizard dua tahap. Sistem mencari baris header pada 100 baris awal, mengenali alias nama kolom Indonesia/Inggris, dan menyimpan profil pemetaan untuk format yang sama. Jika format baru belum dikenali, pengguna memilih kolom sumber dari dropdown tanpa mengubah workbook.
 
-Tanggal dapat berupa tanggal Excel, `DD/MM/YYYY`, atau `YYYY-MM-DD`. Kolom nominal harus berupa angka tanpa teks `Rp`. Kategori utama yang ditampilkan pada ringkasan performa adalah `DEVICE`, `ACC & IOT`, `REPAIR CONTRACT`, `CARRIER`, `CE`, dan `LAPTOP`; kategori lain tetap disimpan dan terlihat pada daftar transaksi.
+Sembilan nilai minimum yang harus dapat dipetakan adalah kode toko, nama toko, nama sales, tanggal order, brand, deskripsi artikel, quantity, omzet nett sebelum pajak, dan kategori. Tanggal dapat berupa tanggal Excel, `DD/MM/YYYY`, atau `YYYY-MM-DD`. Nilai tanggal, quantity, dan omzet tetap harus valid.
 
-Workbook report seperti `REPORT M221 AGUSTUS 2026 UPDATE.xlsx` juga dapat diimpor selama sheet `MASTER` dan `TARGET` dengan layout report asli tetap dipertahankan. Sheet `MASTER` mengisi seluruh actual; sheet `TARGET` mengisi target kategori, brand, operator, dan racing. File master tanpa `TARGET` tetap sah, tetapi hanya memperbarui actual. Target juga dapat dikelola melalui `/admin/report-targets`.
+Preview menampilkan jumlah baris, duplikat, toko, rentang tanggal, total quantity, omzet, dan jeda tanggal sebelum ada perubahan database. Tersedia dua mode:
 
-Seluruh file divalidasi sebelum disimpan. Jika ada baris wajib yang tidak valid, pesan error menyebut nomor baris dan seluruh impor dibatalkan. Penyimpanan memakai transaksi database sehingga tidak ada kondisi sebagian baris masuk. Baris identik dideduplikasi menggunakan fingerprint; mengunggah file yang sama kembali tidak menggandakan omzet atau membuat riwayat kosong.
+- **Tambahkan data baru** untuk data lanjutan; fingerprint identik dilewati.
+- **Ganti data pada rentang file** untuk revisi; data lama pada toko/rentang tanggal terkait dicadangkan lalu diganti.
 
-Urutan pemakaian:
+Seluruh validasi dan penyimpanan memakai transaksi database sehingga tidak ada impor setengah jadi. Rollback menghapus batch baru dan, pada mode ganti rentang, mengembalikan data lama beserta konfigurasi report sebelumnya.
 
-1. Hidupkan MySQL di XAMPP.
-2. Jalankan `npm run dev` dari folder proyek.
-3. Login di `/admin`, lalu buka **Import Excel / CSV**.
-4. Unggah file dan tunggu ringkasan hasil impor.
-5. Buka `/dashboard`, pilih toko, bulan, tahun, dan tanggal snapshot yang sesuai.
-6. Kelola actual dan target kelima menu langsung melalui `/admin`; tampilan tabel lengkap tetap tersedia di `/admin/transactions` dan `/admin/report-targets`.
-7. Hapus seluruh batch yang salah melalui riwayat import. Master Store/Sales otomatis tersinkron dari baris yang diimpor.
+Workbook report dengan sheet `TARGET` tetap mengisi target kategori, brand, operator, dan Racing. File master tanpa `TARGET` tetap sah untuk actual. Karena program Racing berubah setiap bulan, definisi program dapat dikelola tanpa kode melalui `/admin/racing` dan disalin dari bulan sebelumnya.
+
+Dashboard hanya menghitung transaksi sampai tanggal snapshot. Bila file baru memiliki data tanggal 15–30, tanggal 1–14 menampilkan actual nol/kosong sementara target tetap terlihat; data tanggal 15 tidak pernah ditarik mundur ke tanggal 14.
+
+Database dibackup otomatis sekali sehari oleh launcher ke folder `backups` dengan retensi 30 hari. Detail instalasi, penggunaan, pemetaan kolom, Racing, rollback, dan troubleshooting ada di [PANDUAN-LOCALHOST.md](./PANDUAN-LOCALHOST.md).

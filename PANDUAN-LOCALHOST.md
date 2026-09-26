@@ -1,242 +1,137 @@
-# Panduan Menjalankan Aplikasi di Localhost dari Nol
+# Panduan Localhost untuk Klien Windows
 
-Panduan ini ditulis untuk pengguna yang belum pernah menjalankan aplikasi web. Ikuti urutannya dari atas sampai bawah dan jangan melompati langkah.
+Aplikasi ini berjalan dengan **Next.js + MySQL/MariaDB**. Proyek tidak perlu dan tidak disarankan ditaruh di `htdocs`. XAMPP hanya dipakai untuk menyalakan MySQL; Apache opsional untuk membuka phpMyAdmin.
 
-Aplikasi **tidak perlu diletakkan di `htdocs`**. Kode dijalankan oleh Node.js/Next.js dari folder proyek. XAMPP dipakai untuk MySQL; Apache hanya diperlukan jika Anda ingin membuka phpMyAdmin.
+## Instalasi pertama kali (cara yang direkomendasikan)
 
-## 1. Yang perlu diinstal
+Yang perlu terpasang:
 
-Siapkan komputer Windows dan koneksi internet, lalu instal:
+1. Windows 10/11.
+2. Node.js LTS versi 20.9 atau lebih baru.
+3. XAMPP di `C:\xampp`.
 
-1. **Node.js versi LTS** dari `https://nodejs.org/`. Gunakan versi 20.9 atau lebih baru.
-2. **XAMPP** dari `https://www.apachefriends.org/`. Kita memakai MySQL/MariaDB yang tersedia di dalamnya.
-3. **Git** dari `https://git-scm.com/download/win`.
-4. Editor kode seperti **Visual Studio Code** jika ingin melihat atau mengubah kode.
+Langkah pemasangan:
 
-Setelah instalasi selesai, tutup lalu buka kembali Command Prompt.
+1. Ekstrak `Sales-Dashboard-Localhost-Klien.zip` ke folder biasa, misalnya `C:\Sales-Dashboard-Localhost-Klien`.
+2. Buka XAMPP Control Panel dan nyalakan **MySQL**. Apache tidak wajib.
+3. Klik dua kali `INSTALL_DASHBOARD.bat` satu kali saja.
+4. Tunggu sampai tertulis `SETUP SELESAI` dan browser terbuka.
 
-Periksa Node.js dan Git dengan perintah berikut:
+Installer otomatis membuat database `erafone_dashboard`, akun aplikasi lokal yang unik untuk folder instalasi, semua tabel, data awal dari folder `data-awal`, build produksi, dan shortcut Desktop. Klien tidak perlu membuka kode, membuat tabel, atau mengatur `.env` sendiri.
 
-```bat
-node --version
-npm --version
-git --version
-```
+## Pemakaian sehari-hari
 
-Jika masing-masing menampilkan nomor versi, lanjutkan.
+1. Nyalakan **MySQL** di XAMPP.
+2. Klik shortcut Desktop **Buka Sales Dashboard**.
+3. Browser dibuka otomatis. Port utama adalah 3210; jika sedang dipakai aplikasi lain, launcher memilih port berikutnya dan tetap membuka alamat yang benar.
+4. Untuk menutup web, klik shortcut **Tutup Sales Dashboard**.
 
-## 2. Mengambil proyek dari GitHub
+Alamat utama saat memakai port 3210:
 
-Buka **Command Prompt**. Untuk menaruh proyek di folder Downloads, jalankan:
+- Dashboard: `http://localhost:3210/dashboard`
+- Login admin: `http://localhost:3210/admin/login`
+- Import Excel/CSV: `http://localhost:3210/admin/import`
+- Atur program Racing: `http://localhost:3210/admin/racing`
+- CRUD transaksi: `http://localhost:3210/admin/transactions`
+- CRUD target report: `http://localhost:3210/admin/report-targets`
 
-```bat
-cd %USERPROFILE%\Downloads
-git clone https://github.com/ekz121/sales-performance-dashboard.git
-cd sales-performance-dashboard
-```
+Username awal adalah `admin`. Password ditentukan saat instalasi dan tersimpan hanya di komputer klien.
 
-Penting: semua perintah berikutnya harus dijalankan dari folder `sales-performance-dashboard`. Jika muncul pesan bahwa `package.json` tidak ditemukan, berarti posisi folder Anda belum benar.
+## Cara upload Excel/CSV
 
-## 3. Menghidupkan MySQL
+Halaman Import memakai alur dua tahap agar file dengan format yang berubah tidak langsung merusak data:
 
-1. Buka **XAMPP Control Panel**.
-2. Cari baris **MySQL**.
-3. Klik tombol **Start**.
-4. Pastikan tulisan MySQL berwarna hijau.
+1. Pilih file `.xlsx` atau `.csv` maksimal 15 MB, lalu klik **Analisis File**.
+2. Sistem mencari header pada 100 baris awal, mengenali berbagai nama kolom Indonesia/Inggris, dan memakai profil format yang pernah disimpan.
+3. Jika ada kolom yang belum dikenali, pilih kolom sumber pada dropdown pemetaan. Klien tidak perlu mengubah file asal.
+4. Periksa preview: jumlah baris, duplikat, toko, rentang tanggal, quantity, omzet, dan jeda tanggal.
+5. Pilih mode:
+   - **Tambahkan data baru**: aman untuk file lanjutan; baris identik dilewati.
+   - **Ganti data pada rentang file**: cocok untuk revisi periode; data lama dalam toko dan rentang tanggal yang sama diganti secara transaksional.
+6. Klik **Konfirmasi ke MySQL**.
 
-Apache tidak wajib untuk aplikasi ini. Anda boleh menyalakannya jika ingin membuka phpMyAdmin melalui XAMPP.
+Impor menggunakan transaksi database: bila validasi gagal, tidak ada setengah data yang masuk. Riwayat impor dapat di-rollback. Pada mode ganti rentang, rollback juga mengembalikan data lama yang diganti.
 
-## 4. Membuat database kosong
+Syarat minimum agar suatu baris penjualan dapat masuk adalah adanya nilai untuk:
 
-Cara paling mudah:
+- kode toko;
+- nama toko;
+- nama sales;
+- tanggal order;
+- brand;
+- deskripsi artikel;
+- quantity;
+- omzet nett sebelum pajak;
+- kategori.
 
-1. Hidupkan **Apache** dan **MySQL** di XAMPP.
-2. Buka browser.
-3. Masuk ke `http://localhost/phpmyadmin`.
-4. Klik menu **New** atau **Baru** di sebelah kiri.
-5. Pada nama database, tulis `erafone`.
-6. Klik **Create** atau **Buat**.
+Nama header tidak harus persis sama karena dapat dipetakan di layar. Namun nilai di dalam baris tetap harus masuk akal: tanggal valid, quantity berupa angka, dan omzet berupa angka. File Excel yang diproteksi password harus dibuka proteksinya terlebih dahulu.
 
-Tidak perlu membuat tabel secara manual. Prisma akan membuat seluruh tabel pada langkah berikutnya.
+## Perilaku tanggal yang normal
 
-## 5. Membuat file konfigurasi `.env`
+Dashboard tidak menganggap tanggal tanpa transaksi sebagai transaksi nol yang sudah dilaporkan, dan tidak memundurkan data masa depan.
 
-Di folder proyek terdapat file `.env.example`. Buat salinannya dengan nama `.env`:
+Contoh: data file baru berisi tanggal 15–30 September.
 
-```bat
-copy .env.example .env
-```
+- Saat memilih **14 September**, actual/MTD tampil nol atau kosong karena belum ada transaksi sampai tanggal itu. Target tetap tampil sebagai acuan.
+- Saat memilih **15 September**, actual hanya menghitung transaksi sampai tanggal 15.
+- Saat memilih **30 September**, actual menghitung seluruh transaksi tanggal 15–30.
+- Rentang tanggal data aktual ditampilkan pada dashboard supaya pengguna mengetahui cakupan file.
 
-Buka file `.env` menggunakan Notepad atau VS Code. Untuk XAMPP standar dengan user `root` dan **tanpa password**, isinya dapat seperti ini:
+Proyeksi memakai hari data yang benar-benar tersedia sampai tanggal pilihan, bukan tanggal komputer dan bukan tanggal transaksi di masa depan.
 
-```env
-DATABASE_URL="mysql://root:@localhost:3306/erafone"
-ADMIN_USERNAME="admin"
-ADMIN_PASSWORD="admin123"
-AUTH_SECRET="ganti-ini-dengan-kalimat-acak-panjang-minimal-32-karakter"
-```
+## Racing yang berubah setiap bulan
 
-Perhatikan bagian `root:@`: tanda titik dua langsung diikuti `@` berarti password MySQL kosong.
+Program Racing dikelola per toko, bulan, dan tahun melalui `/admin/racing`.
 
-Jika MySQL Anda memakai password, contoh password-nya `rahasia`, ubah menjadi:
+- Tambah, ubah, atau hapus aturan tanpa mengubah kode.
+- Aturan dapat memakai brand, artikel, kategori, minimum nilai, unit quantity atau omzet, dan nilai nett/gross.
+- Tombol **Salin bulan sebelumnya** membuat titik awal untuk bulan baru, kemudian admin cukup menyesuaikan program yang berubah.
+- Target program tetap dapat diatur dari Admin dan actual dihitung dari transaksi MySQL pada periode terpilih.
 
-```env
-DATABASE_URL="mysql://root:rahasia@localhost:3306/erafone"
-```
+Dengan cara ini perubahan Racing tidak bergantung pada bentuk sheet Excel tertentu.
 
-Simpan file tersebut. Jangan pernah mengirim atau mengunggah `.env` ke GitHub.
+## Data, CRUD, backup, dan keamanan
 
-## 6. Memasang kebutuhan aplikasi
+Semua halaman membaca dan menulis database MySQL yang sama. Tambah/edit/hapus transaksi, target, dan program Racing akan terbaca dashboard setelah refresh tanpa ekspor ulang.
 
-Pastikan Command Prompt masih berada di folder proyek, lalu jalankan satu per satu. Tunggu satu perintah selesai sebelum menjalankan perintah berikutnya:
+Launcher membuat backup database otomatis sekali sehari ke folder `backups`. Backup lama disimpan selama 30 hari. Folder backup, `.env`, log, dan password tidak dimasukkan ke GitHub atau paket distribusi.
+
+Jangan menghapus folder aplikasi setelah dipasang karena `.env` dan launcher ada di sana. Memindahkan folder setelah instalasi sebaiknya diikuti dengan menjalankan installer lagi agar akun lokal dan shortcut diperbarui.
+
+## Solusi masalah umum
+
+### Dashboard gagal menyala
+
+1. Pastikan MySQL XAMPP berwarna hijau.
+2. Jalankan `INSTALL_DASHBOARD.bat` lagi. Installer aman dijalankan ulang dan tidak menggandakan transaksi identik.
+3. Buka `logs\dashboard-error.log` bila pesan tetap muncul.
+
+### Browser terus memuat
+
+Tutup launcher lama dengan **Tutup Sales Dashboard**, pastikan MySQL hidup, lalu jalankan **Buka Sales Dashboard**. Launcher menunggu health check aplikasi dan memilih port kosong secara otomatis.
+
+### Database tidak dapat dihubungi
+
+Pastikan MySQL memakai port yang terdeteksi installer dan belum dihentikan. Jangan menyalin `.env` dari instalasi lain karena setiap folder memiliki akun database lokalnya sendiri.
+
+### File tidak dapat diimpor
+
+Gunakan **Analisis File**, lalu isi pemetaan kolom yang ditandai belum cocok. Pesan validasi menyebut sheet, header, atau baris yang bermasalah. Jangan menekan konfirmasi sebelum ringkasan preview sesuai file.
+
+### Data salah setelah impor
+
+Buka Riwayat Import pada halaman import dan pilih rollback untuk batch tersebut. Untuk file revisi berikutnya gunakan mode **Ganti data pada rentang file**.
+
+## Pemeriksaan teknis opsional
+
+Pengembang dapat menjalankan pemeriksaan berikut dari folder proyek:
 
 ```bat
 npm install
-npx prisma generate
 npx prisma migrate deploy
-npm run prisma:seed
-```
-
-Arti sederhananya:
-
-- `npm install`: mengunduh bahan yang dibutuhkan aplikasi.
-- `prisma generate`: menyiapkan penghubung aplikasi dengan MySQL.
-- `prisma migrate deploy`: membuat tabel-tabel di database `erafone`.
-- `prisma:seed`: memasukkan data awal Agustus 2026 agar dashboard langsung terisi.
-
-Jika semuanya berhasil, database sudah siap.
-
-## 7. Menjalankan aplikasi
-
-Jalankan:
-
-```bat
-npm run dev
-```
-
-Jangan tutup jendela Command Prompt tersebut selama aplikasi dipakai. Buka browser dan kunjungi:
-
-- Dashboard: `http://localhost:3000/dashboard`
-- Admin: `http://localhost:3000/admin`
-- Import Excel/CSV dan rollback: `http://localhost:3000/admin/import`
-- CRUD transaksi: `http://localhost:3000/admin/transactions`
-- CRUD target report: `http://localhost:3000/admin/report-targets`
-
-Gunakan alamat `localhost` di atas. Dashboard analytics akan memilih periode data transaksi terbaru dari MySQL. Jika target suatu periode belum pernah diimpor, nilai actual tetap tampil dan dashboard memberi penanda bahwa target periode itu belum tersedia.
-
-Login admin mengikuti isi `.env`. Dengan contoh di atas:
-
-- Username: `admin`
-- Password: `admin123`
-
-Ganti password tersebut sebelum aplikasi dipakai sungguhan.
-
-## 8. Cara mengisi data
-
-Untuk data master dalam jumlah besar, gunakan alur berikut:
-
-1. Login ke halaman Admin.
-2. Buka **Import Excel / CSV**.
-3. Pilih file `.xlsx` atau `.csv` dengan format master sales.
-4. Klik **Import ke MySQL** dan tunggu ringkasan jumlah baris.
-5. Buka Dashboard, lalu pilih toko dan periode yang diimpor.
-
-File tidak dipakai langsung oleh dashboard. File hanya dibaca saat proses import; sesudah itu transaksi dan konfigurasi report tersimpan di MySQL. Mengimpor file yang sama kembali aman karena transaksi yang sama dideteksi sebagai duplikat.
-
-Halaman `/admin` adalah admin analytics terpadu. Lima menunya sama dengan dashboard: Perform Dashboard, Sales by Brand, Operator, Racing, dan Produk Fokus. Input actual manual, edit/hapus transaksi, serta target yang relevan semuanya menulis ke tabel MySQL yang dibaca dashboard. Master Store dan Sales otomatis bertambah saat file diimpor.
-
-## 9. Memakai dashboard analytics
-
-1. Buka Dashboard.
-2. Pilih toko, bulan, dan tahun.
-3. Pilih menu **Perform Dashboard**, **Sales by Brand**, **Operator**, **Racing**, atau **Produk Fokus** di sidebar kiri.
-4. Klik tombol panah di atas sidebar untuk mengecilkan sidebar menjadi ikon saja; area konten akan menyesuaikan otomatis.
-5. Gunakan **Sampai Tanggal** untuk mereproduksi snapshot tertentu (contoh: gambar brief memakai 20 Agustus 2026).
-6. Perubahan dari Admin dikirim lintas-tab segera; polling MySQL setiap 5 detik menjadi cadangan.
-
-Singkatan angka: `M` berarti miliar, `jt` berarti juta, dan `rb` berarti ribu. Arahkan pointer ke angka/grafik untuk melihat nilai Rupiah lengkap bila tersedia.
-
-## 10. Cara menghentikan dan menjalankan kembali
-
-Untuk menghentikan aplikasi, kembali ke Command Prompt lalu tekan `Ctrl + C`.
-
-Untuk menjalankannya lagi di lain waktu:
-
-1. Hidupkan MySQL dari XAMPP.
-2. Buka Command Prompt.
-3. Masuk ke folder proyek.
-4. Jalankan `npm run dev`.
-
-Contoh:
-
-```bat
-cd %USERPROFILE%\Downloads\sales-performance-dashboard
-npm run dev
-```
-
-Tidak perlu menjalankan migration dan seed setiap kali aplikasi dibuka.
-
-## 11. Solusi error yang paling sering terjadi
-
-### `npm` atau `node` tidak dikenali
-
-Node.js belum terinstal atau Command Prompt belum dibuka ulang. Instal Node.js LTS, tutup semua terminal, lalu coba lagi.
-
-### PowerShell mengatakan script tidak boleh dijalankan
-
-Gunakan **Command Prompt (cmd)** untuk menjalankan perintah. Ini paling mudah untuk pemula.
-
-### Prisma `P1001` atau tidak bisa menjangkau database
-
-MySQL belum hidup atau port-nya berbeda. Nyalakan MySQL di XAMPP dan pastikan port pada `.env` sesuai. Port standar adalah `3306`.
-
-### Prisma `P1003` atau database tidak ditemukan
-
-Database `erafone` belum dibuat. Kembali ke phpMyAdmin dan buat database tersebut.
-
-### Prisma `P1000` atau authentication failed
-
-Username/password MySQL pada `DATABASE_URL` salah. Untuk XAMPP standar tanpa password gunakan tepat:
-
-```env
-DATABASE_URL="mysql://root:@localhost:3306/erafone"
-```
-
-### Port 3000 sudah dipakai
-
-Next.js biasanya menawarkan port lain seperti 3001. Buka alamat yang tertulis di terminal, atau tutup aplikasi lama yang masih memakai port 3000.
-
-### Dashboard kosong
-
-Pastikan MySQL berwarna hijau di XAMPP. Setelah itu buka `/admin/import`, periksa bahwa riwayat import ada, lalu pilih toko dan periode yang sama pada dashboard. Data contoh M221 tersedia pada Agustus 2026; master Kalimantan tersedia pada September 2026.
-
-### Perubahan admin belum muncul
-
-Tunggu maksimal 10 detik atau klik **Segarkan**. Pastikan input menggunakan periode yang sama dengan filter dashboard.
-
-### `Unexpected end of JSON input`
-
-Error ini biasanya muncul ketika API gagal karena MySQL mati atau konfigurasi database salah, lalu browser menerima respons kosong. Versi aplikasi ini sudah menampilkan pesan API yang aman, tetapi sumber masalah tetap harus diperbaiki: hidupkan MySQL dan pastikan `DATABASE_URL` pada `.env` benar.
-
-Setelah MySQL menyala, hentikan aplikasi dengan `Ctrl + C`, jalankan kembali `npm run dev`, kemudian muat ulang `http://localhost:3000/dashboard`.
-
-### Ingin mengulang data seed
-
-Jalankan:
-
-```bat
-npm run prisma:seed
-```
-
-Seed memperbarui data referensi. Data tambahan yang dibuat sendiri tidak otomatis dihapus.
-
-## 12. Pemeriksaan opsional
-
-Untuk memastikan kode sehat, jalankan:
-
-```bat
 npm test
+npx tsc --noEmit
 npm run build
 ```
 
-Jika keduanya selesai tanpa error, aplikasi siap digunakan.
+Untuk pengembangan gunakan `npm run dev`. Untuk klien selalu gunakan installer dan launcher produksi yang disediakan.
