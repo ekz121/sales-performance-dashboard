@@ -20,8 +20,9 @@ INSTALASI PERTAMA (HANYA SEKALI)
 
 PEMAKAIAN HARIAN
 - Klik shortcut "Buka Sales Dashboard" di Desktop.
-- Alamat dashboard: http://localhost:3210/dashboard
-- Alamat admin:     http://localhost:3210/admin
+- Alamat utama: http://localhost:3210/dashboard
+- Jika port 3210 dipakai aplikasi lain, launcher otomatis memilih 3211-3219.
+- Browser akan dibuka otomatis pada alamat yang benar.
 - Untuk berhenti, klik shortcut "Tutup Sales Dashboard".
 
 UPLOAD EXCEL

@@ -13,4 +13,5 @@ coverage
 /revisi/
 /data-awal/
 /.dashboard-local.pid
+/.dashboard-local.port
 /logs/

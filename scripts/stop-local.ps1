@@ -1,5 +1,6 @@
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $PidFile = Join-Path $ProjectRoot ".dashboard-local.pid"
+$PortFile = Join-Path $ProjectRoot ".dashboard-local.port"
 Add-Type -AssemblyName PresentationFramework
 
 if (Test-Path -LiteralPath $PidFile) {
@@ -10,4 +11,5 @@ if (Test-Path -LiteralPath $PidFile) {
   }
   Remove-Item -LiteralPath $PidFile -Force -ErrorAction SilentlyContinue
 }
+Remove-Item -LiteralPath $PortFile -Force -ErrorAction SilentlyContinue
 [System.Windows.MessageBox]::Show("Sales Dashboard sudah dihentikan. MySQL XAMPP tetap dibiarkan hidup agar aplikasi lain tidak terganggu.", "Sales Dashboard") | Out-Null

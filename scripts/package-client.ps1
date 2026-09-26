@@ -18,7 +18,7 @@ try {
 
   & robocopy $ProjectRoot $ResolvedStaging /E `
     /XD .git node_modules .next logs `
-    /XF .env .dashboard-local.pid *.log *.tsbuildinfo
+    /XF .env .dashboard-local.pid .dashboard-local.port *.log *.tsbuildinfo
   if ($LASTEXITCODE -ge 8) { throw "Penyalinan paket gagal (robocopy $LASTEXITCODE)." }
 
   $RequiredFiles = @(
