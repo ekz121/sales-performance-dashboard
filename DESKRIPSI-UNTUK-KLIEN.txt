@@ -1,0 +1,258 @@
+SALES PERFORMANCE DASHBOARD
+Panduan dan Penjelasan untuk Pengguna
+============================================================
+
+1. GAMBARAN UMUM
+
+Sales Performance Dashboard adalah aplikasi laporan penjualan yang digunakan
+untuk membaca data Excel, menyimpannya ke database lokal, dan menampilkan
+hasilnya dalam bentuk dashboard yang mudah dibaca.
+
+Aplikasi bekerja di komputer sendiri melalui alamat localhost. Data tidak perlu
+dikirim ke layanan internet. Seluruh transaksi, target, program Racing, dan
+riwayat upload tersimpan di database MySQL pada komputer pengguna.
+
+
+2. YANG HARUS DIPASANG
+
+Sebelum instalasi, komputer harus memiliki:
+
+- Windows 10 atau Windows 11.
+- XAMPP yang dipasang di C:\xampp.
+- Node.js LTS versi 20 atau lebih baru.
+- Koneksi internet saat instalasi pertama untuk mengambil komponen aplikasi.
+
+Apache tidak wajib untuk menjalankan dashboard. Di XAMPP yang dibutuhkan adalah
+MySQL. Apache hanya diperlukan bila pengguna ingin membuka phpMyAdmin.
+
+Aplikasi tidak perlu ditaruh di dalam folder htdocs. Folder aplikasi boleh
+diletakkan di Downloads, Documents, drive D, atau folder lain yang mudah dicari.
+
+
+3. CARA INSTALASI PERTAMA
+
+1. Ekstrak file Sales-Dashboard-Localhost-Klien.zip.
+2. Jangan memindahkan atau menghapus folder data-awal.
+3. Pastikan XAMPP sudah terpasang di C:\xampp.
+4. Klik dua kali INSTALL_DASHBOARD.bat.
+5. Masukkan username dan password admin yang diinginkan.
+6. Tunggu sampai muncul tulisan SETUP SELESAI.
+7. Browser akan membuka dashboard secara otomatis.
+
+Installer melakukan seluruh persiapan secara otomatis, yaitu:
+
+- menyalakan MySQL bila belum aktif;
+- membuat database erafone_dashboard;
+- membuat seluruh tabel;
+- memasukkan tiga file Excel awal;
+- membuat aplikasi versi produksi;
+- membuat shortcut Buka dan Tutup Sales Dashboard di Desktop.
+
+Instalasi pertama dapat memerlukan beberapa menit. Tulisan warning dari paket
+pendukung bukan berarti instalasi gagal. Patokan keberhasilan adalah tulisan
+SETUP SELESAI dan dashboard berhasil dibuka.
+
+
+4. CARA MEMBUKA SETIAP HARI
+
+1. Klik shortcut Buka Sales Dashboard di Desktop.
+2. MySQL akan dinyalakan otomatis bila belum aktif.
+3. Browser akan membuka alamat dashboard yang benar.
+4. Login admin menggunakan username dan password yang dibuat saat instalasi.
+
+Port utama adalah 3210. Bila port itu dipakai aplikasi lain, sistem memilih
+port 3211 sampai 3219 secara otomatis. Pengguna tidak perlu mengganti port.
+
+Untuk menutup aplikasi, klik shortcut Tutup Sales Dashboard. Menutup tab browser
+saja tidak mematikan server dashboard.
+
+
+5. FITUR UTAMA
+
+Aplikasi menyediakan:
+
+- ringkasan target, penjualan berjalan, proyeksi, pencapaian, dan selisih target;
+- analisis penjualan per kategori;
+- analisis penjualan per brand;
+- analisis operator;
+- program Racing bulanan;
+- Produk Fokus;
+- filter store, bulan, tahun, dan tanggal laporan;
+- tambah, edit, dan hapus transaksi;
+- tambah, edit, dan hapus target;
+- upload Excel atau CSV;
+- riwayat upload dan rollback;
+- backup database otomatis setiap hari;
+- tombol cetak laporan.
+
+Semua menu membaca database yang sama. Perubahan dari halaman Admin akan masuk
+ke dashboard setelah halaman disegarkan.
+
+
+6. ATURAN TANGGAL DASHBOARD
+
+Dashboard hanya menghitung transaksi sampai tanggal yang dipilih.
+
+Contoh: file hanya memiliki transaksi tanggal 15 sampai 30 September.
+
+- Bila pengguna memilih tanggal 14, actual atau MTD tampil nol/kosong.
+- Bila memilih tanggal 15, hanya transaksi sampai tanggal 15 yang dihitung.
+- Bila memilih tanggal 30, seluruh transaksi tanggal 15 sampai 30 dihitung.
+- Target tetap ditampilkan walaupun belum ada transaksi.
+
+Data tanggal 15 tidak akan dimasukkan ke laporan tanggal 14. Dashboard juga
+menampilkan rentang tanggal data agar pengguna mengetahui cakupan file.
+
+
+7. CARA UPLOAD EXCEL ATAU CSV
+
+1. Login ke Admin.
+2. Buka menu Import Excel/CSV.
+3. Pilih file XLSX atau CSV maksimal 15 MB.
+4. Klik Analisis File.
+5. Periksa jumlah baris, duplikat, store, tanggal, quantity, dan nilai penjualan.
+6. Bila nama kolom berubah, pilih pasangan kolom melalui dropdown.
+7. Pilih mode upload.
+8. Klik Konfirmasi ke MySQL.
+
+File selalu dianalisis sebelum masuk ke database. Analisis tidak mengubah
+dashboard. Data baru masuk setelah tombol konfirmasi ditekan.
+
+Sistem mencari header sampai 100 baris pertama dan mengenali berbagai nama
+kolom Indonesia maupun Inggris. Pemetaan format disimpan sehingga format yang
+sama dapat dikenali otomatis pada upload berikutnya.
+
+
+8. DATA MINIMUM YANG HARUS ADA
+
+Setiap baris transaksi minimal harus memiliki:
+
+- kode store;
+- nama store;
+- nama sales;
+- tanggal order;
+- nama brand;
+- deskripsi artikel;
+- quantity;
+- nilai penjualan nett sebelum pajak;
+- kategori.
+
+Nama header boleh berbeda karena dapat dipetakan di layar. Namun isi datanya
+harus valid. Tanggal harus dapat dibaca sebagai tanggal, quantity harus berupa
+angka, dan nilai penjualan harus berupa angka. File Excel yang memakai password
+harus dibuka proteksinya sebelum di-upload.
+
+
+9. PILIHAN MODE UPLOAD
+
+TAMBAHKAN DATA BARU
+
+Digunakan untuk file lanjutan atau tambahan. Baris yang benar-benar sama akan
+dilewati agar omzet tidak terhitung dua kali. Tanggal yang tidak ada di dalam
+file tidak akan dihapus.
+
+GANTI DATA PADA RENTANG FILE
+
+Digunakan bila file merupakan revisi. Data lama untuk store dan rentang tanggal
+yang sama dicadangkan, kemudian diganti dengan isi file baru.
+
+Jika terjadi kesalahan, buka Riwayat Import dan jalankan rollback. Pada mode
+ganti rentang, rollback juga mengembalikan data lama yang sebelumnya diganti.
+
+
+10. PROGRAM RACING BULANAN
+
+Program Racing dapat berubah setiap bulan dan tidak perlu diubah melalui coding.
+
+1. Buka Admin lalu pilih Program Racing.
+2. Pilih store, bulan, dan tahun.
+3. Tambah, ubah, atau hapus aturan program.
+4. Aturan dapat memakai brand, artikel, kategori, batas nilai, quantity,
+   nilai nett, atau nilai gross.
+5. Gunakan Salin Bulan Sebelumnya untuk membuat dasar program bulan baru.
+6. Sesuaikan target setiap sales sesuai kebutuhan bulan tersebut.
+
+Actual Racing dihitung dari transaksi pada database untuk periode yang dipilih.
+
+
+11. BACKUP DAN KEAMANAN DATA
+
+Backup MySQL dibuat otomatis satu kali sehari ke folder backups. Sistem
+menyimpan maksimal 30 backup terbaru.
+
+File password .env, backup, log, dan data sementara tidak dimasukkan ke GitHub
+atau paket distribusi. Jangan membagikan file .env kepada orang lain.
+
+Untuk keamanan operasional:
+
+- periksa preview sebelum konfirmasi upload;
+- gunakan rollback bila file yang dimasukkan salah;
+- jangan mengubah isi database melalui phpMyAdmin kecuali dilakukan oleh teknisi;
+- simpan salinan ZIP installer di tempat aman;
+- lakukan salinan tambahan folder backups ke media lain secara berkala.
+
+
+12. CARA MENUTUP, MEMINDAHKAN, ATAU MENGHAPUS FOLDER
+
+Menutup semua tab browser tidak menghentikan dashboard. Server Node.js tetap
+berjalan tersembunyi dan dapat membuat Windows menolak penghapusan folder.
+
+Sebelum memindahkan atau menghapus folder:
+
+1. Klik shortcut Tutup Sales Dashboard.
+2. Tunggu pesan bahwa dashboard sudah dihentikan.
+3. Tutup Command Prompt, PowerShell, atau VS Code yang sedang membuka folder itu.
+4. Tutup jendela File Explorer yang sedang menampilkan isi folder bila perlu.
+5. Pindahkan atau hapus folder.
+
+MySQL tetap dibiarkan hidup karena mungkin dipakai aplikasi XAMPP lain. Jika
+folder dipindahkan, jalankan INSTALL_DASHBOARD.bat lagi dari lokasi baru agar
+shortcut dan akun lokal disesuaikan.
+
+
+13. PENANGANAN MASALAH
+
+LOGIN TIDAK DITERIMA
+
+Pastikan alamat browser berasal dari shortcut instalasi yang benar. Tutup semua
+salinan dashboard melalui shortcut Tutup, kemudian buka kembali. Username dan
+password mengikuti yang dibuat saat installer terakhir dijalankan pada folder
+tersebut.
+
+SERVER DATA BERMASALAH
+
+Pastikan MySQL XAMPP aktif. Tutup dashboard, kemudian buka kembali. Bila masih
+gagal, jalankan INSTALL_DASHBOARD.bat lagi dari folder yang sama.
+
+LOGO ATAU GAMBAR TIDAK TAMPIL
+
+Tekan Ctrl+F5 setelah dashboard versi baru dibuka. Pastikan file
+public\erafone.png tidak dihapus.
+
+FILE EXCEL TIDAK TERBACA
+
+Gunakan Analisis File dan lengkapi pemetaan kolom yang belum dikenali. Baca
+pesan validasi karena sistem menyebut sheet atau baris yang bermasalah.
+
+FOLDER TIDAK BISA DIHAPUS
+
+Klik Tutup Sales Dashboard. Periksa Task Manager dan hentikan node.exe yang
+alamat prosesnya berasal dari folder tersebut jika proses masih ada. Setelah
+itu tutup terminal dan File Explorer yang masih berada di folder.
+
+
+14. RINGKASAN ALUR KERJA
+
+Instal sekali:
+Ekstrak ZIP -> jalankan INSTALL_DASHBOARD.bat -> buat akun admin -> tunggu selesai.
+
+Pemakaian harian:
+Buka shortcut -> login -> upload atau kelola data -> lihat dashboard -> tutup
+dengan shortcut Tutup Sales Dashboard.
+
+Pembaruan bulanan:
+Upload transaksi -> periksa preview -> konfirmasi -> atur target -> salin dan
+sesuaikan program Racing -> periksa dashboard berdasarkan tanggal.
+
+Dengan alur ini, pengguna tidak perlu membuka coding, menjalankan perintah
+terminal, membuat tabel, atau mengatur database secara manual.

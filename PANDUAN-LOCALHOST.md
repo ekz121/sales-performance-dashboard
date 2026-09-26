@@ -26,6 +26,8 @@ Installer otomatis membuat database `erafone_dashboard`, akun aplikasi lokal yan
 3. Browser dibuka otomatis. Port utama adalah 3210; jika sedang dipakai aplikasi lain, launcher memilih port berikutnya dan tetap membuka alamat yang benar.
 4. Untuk menutup web, klik shortcut **Tutup Sales Dashboard**.
 
+Jika ada lebih dari satu folder dashboard, setiap instalasi memakai port kosongnya sendiri. Launcher tidak akan membuka akun atau database milik folder lain.
+
 Alamat utama saat memakai port 3210:
 
 - Dashboard: `http://localhost:3210/dashboard`
@@ -97,6 +99,8 @@ Semua halaman membaca dan menulis database MySQL yang sama. Tambah/edit/hapus tr
 Launcher membuat backup database otomatis sekali sehari ke folder `backups`. Backup lama disimpan selama 30 hari. Folder backup, `.env`, log, dan password tidak dimasukkan ke GitHub atau paket distribusi.
 
 Jangan menghapus folder aplikasi setelah dipasang karena `.env` dan launcher ada di sana. Memindahkan folder setelah instalasi sebaiknya diikuti dengan menjalankan installer lagi agar akun lokal dan shortcut diperbarui.
+
+Untuk menghapus folder, klik **Tutup Sales Dashboard** terlebih dahulu dan tunggu pesannya. Menutup tab browser tidak menghentikan server Node.js yang berjalan tersembunyi. Setelah server dihentikan, tutup terminal atau VS Code yang sedang berada di folder tersebut, lalu hapus folder melalui File Explorer.
 
 ## Solusi masalah umum
 

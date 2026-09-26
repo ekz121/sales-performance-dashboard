@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractReport, ImportValidationError, transactionRows } from "./import-sales";
+import { extractReport, ImportValidationError, stableJson, transactionRows } from "./import-sales";
 
 const headers = [
   "SITE CODE",
@@ -12,6 +12,17 @@ const headers = [
   "total nett amount exc tax",
   "CAT",
 ];
+
+describe("stableJson", () => {
+  it("menyamakan round-trip JSON MySQL dan mengabaikan selisih floating-point sangat kecil", () => {
+    expect(stableJson({
+      target: 415_632_189.04050547,
+      optional: undefined,
+    })).toBe(stableJson({
+      target: 415_632_189.0405055,
+    }));
+  });
+});
 
 describe("transactionRows", () => {
   it("menerima variasi pemisah header yang umum", () => {

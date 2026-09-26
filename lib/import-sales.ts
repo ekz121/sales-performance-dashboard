@@ -5,6 +5,22 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { syncSalesMaster } from "./sync-sales-master";
 
+export function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return JSON.stringify(Math.round(value * 1_000_000) / 1_000_000);
+  }
+  if (value && typeof value === "object") {
+    const object = value as Record<string, unknown>;
+    return `{${Object.keys(object)
+      .filter((key) => object[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(object[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
 export const REQUIRED_HEADERS = [
   "site_code",
   "site_desc",
@@ -1051,6 +1067,14 @@ export async function importSalesBuffer(
             },
           })
         : null;
+      const reportChanged = Boolean(
+        report && (
+          !existingReport ||
+          existingReport.storeName !== report.storeName ||
+          existingReport.sourceFile !== report.sourceFile ||
+          stableJson(existingReport.config) !== stableJson(report.config)
+        ),
+      );
       const profile = options.saveProfile === false
         ? null
         : await database.importProfile.upsert({
@@ -1123,12 +1147,15 @@ export async function importSalesBuffer(
         }
       }
 
-      if (replacedBackup.length || existingReport) {
+      if (replacedBackup.length || (existingReport && reportChanged)) {
         await database.importReplacementBackup.create({
           data: {
             importBatchId: batch.id,
             rowCount: replacedBackup.length,
-            payload: JSON.stringify({ transactions: replacedBackup, report: existingReport }),
+            payload: JSON.stringify({
+              transactions: replacedBackup,
+              report: reportChanged ? existingReport : null,
+            }),
           },
         });
       }
@@ -1146,7 +1173,7 @@ export async function importSalesBuffer(
 
       await syncSalesMaster(transactions, database);
 
-      if (report) {
+      if (report && reportChanged) {
         await database.reportDataset.upsert({
           where: {
             storeCode_month_year: {
@@ -1168,7 +1195,7 @@ export async function importSalesBuffer(
         });
       }
 
-      if (!insertedRows && !replacedRows && !report) {
+      if (!insertedRows && !replacedRows && !reportChanged) {
         await database.importBatch.delete({ where: { id: batch.id } });
         return { batchId: null, insertedRows, replacedRows };
       }

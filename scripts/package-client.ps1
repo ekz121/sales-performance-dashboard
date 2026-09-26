@@ -26,7 +26,8 @@ try {
     "data-awal\MASTER KALIMANTAN 1-6 SEPTEMBER  2026.xlsx",
     "data-awal\REPORT M221 SEPTEMBER 2026 UPDATE.xlsx",
     "INSTALL_DASHBOARD.bat",
-    "MULAI-DI-SINI.txt"
+    "MULAI-DI-SINI.txt",
+    "DESKRIPSI-UNTUK-KLIEN.txt"
   )
   foreach ($RelativePath in $RequiredFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $ResolvedStaging $RelativePath))) {

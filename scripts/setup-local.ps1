@@ -32,6 +32,27 @@ try {
     Stop-Setup "Node.js terlalu lama. Versi minimal adalah 20.9."
   }
 
+  # Reinstall harus menghentikan instance dari folder yang sama terlebih dahulu.
+  # Jika tidak, proses lama masih menyimpan akun admin/database lama di memori
+  # dan Windows dapat mengunci file node_modules saat npm ci berjalan.
+  $StoppedExistingDashboard = $false
+  $ExistingDashboardProcesses = @(Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
+    Where-Object {
+      $_.CommandLine -and
+      $_.CommandLine.IndexOf($ProjectRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+      $_.CommandLine -match 'next(\.cmd|\.js)?\s+start|next\\dist\\bin\\next.*\sstart\s'
+    })
+  foreach ($ExistingDashboardProcess in $ExistingDashboardProcesses) {
+    Stop-Process -Id $ExistingDashboardProcess.ProcessId -Force -ErrorAction SilentlyContinue
+    Wait-Process -Id $ExistingDashboardProcess.ProcessId -Timeout 10 -ErrorAction SilentlyContinue
+    $StoppedExistingDashboard = $true
+  }
+  Remove-Item -LiteralPath (Join-Path $ProjectRoot ".dashboard-local.pid") -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath (Join-Path $ProjectRoot ".dashboard-local.port") -Force -ErrorAction SilentlyContinue
+  if ($StoppedExistingDashboard) {
+    Write-Host "Versi dashboard lama dari folder ini sudah dihentikan sebelum instalasi ulang." -ForegroundColor Yellow
+  }
+
   $XamppRoot = "C:\xampp"
   $Mysql = Join-Path $XamppRoot "mysql\bin\mysql.exe"
   $MysqlAdmin = Join-Path $XamppRoot "mysql\bin\mysqladmin.exe"
@@ -136,7 +157,7 @@ AUTH_SECRET="$AuthSecret"
     }
   }
 
-  Run-Step "Memasang komponen aplikasi" $Npm.Source @("ci", "--no-audit", "--no-fund")
+  Run-Step "Memasang komponen aplikasi" $Npm.Source @("ci", "--no-audit", "--no-fund", "--loglevel=error")
   Run-Step "Membuat seluruh tabel database" $Npm.Source @("exec", "--", "prisma", "migrate", "deploy")
   Run-Step "Mengimpor semua data Excel" $Node.Source @("--import", "tsx", "scripts/import-initial-data.ts", "data-awal")
   Run-Step "Membangun aplikasi produksi" $Npm.Source @("run", "build")

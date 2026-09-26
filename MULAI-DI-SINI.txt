@@ -24,6 +24,8 @@ PEMAKAIAN HARIAN
 - Jika port 3210 dipakai aplikasi lain, launcher otomatis memilih 3211-3219.
 - Browser akan dibuka otomatis pada alamat yang benar.
 - Untuk berhenti, klik shortcut "Tutup Sales Dashboard".
+- Jika ada beberapa salinan dashboard, setiap salinan memakai port berbeda dan
+  tidak akan membuka akun/database milik folder lain.
 
 UPLOAD EXCEL
 - Login Admin lalu buka menu Import Excel/CSV.
@@ -50,3 +52,6 @@ CATATAN
 - Backup MySQL dibuat otomatis sekali sehari di folder backups (maksimal 30 file).
 - Jangan menghapus folder aplikasi, data-awal, .env, node_modules, atau .next.
 - Jika komputer diganti, pindahkan seluruh paket dan jalankan INSTALL_DASHBOARD.bat lagi.
+- Sebelum memindahkan atau menghapus folder, klik "Tutup Sales Dashboard" dan
+  tunggu pesan bahwa folder aman dihapus. Menutup tab browser saja tidak
+  menghentikan server Node.js yang berjalan tersembunyi.

@@ -11,7 +11,7 @@ Folder distribusi dapat diletakkan di mana saja, termasuk `C:\xampp\htdocs\sales
 4. Pemakaian berikutnya cukup klik **Buka Sales Dashboard**. Alamatnya `http://localhost:3210/dashboard`.
 5. Gunakan **Tutup Sales Dashboard** untuk menghentikan web; MySQL tidak dihentikan karena mungkin dipakai aplikasi XAMPP lain.
 
-Petunjuk singkat untuk klien ada di `MULAI-DI-SINI.txt`. File `.env`, `node_modules`, `.next`, log, PID, dan workbook operasional tidak di-commit.
+Petunjuk singkat untuk klien ada di `MULAI-DI-SINI.txt`. Penjelasan nonteknis yang siap disalin ke Word ada di `DESKRIPSI-UNTUK-KLIEN.txt`. File `.env`, `node_modules`, `.next`, log, PID, dan workbook operasional tidak di-commit.
 
 Aplikasi ini adalah aplikasi Next.js, jadi **tidak perlu dipindahkan ke `htdocs`**. XAMPP hanya diperlukan untuk menjalankan MySQL/MariaDB (dan Apache bila ingin memakai phpMyAdmin).
 

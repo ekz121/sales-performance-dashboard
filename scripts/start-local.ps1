@@ -10,6 +10,16 @@ function Show-Error([string]$Message) {
   exit 1
 }
 
+function Test-OwnDashboardProcess($CandidateProcess) {
+  return (
+    $CandidateProcess -and
+    $CandidateProcess.Name -eq "node.exe" -and
+    $CandidateProcess.CommandLine -and
+    $CandidateProcess.CommandLine.IndexOf($ProjectRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+    $CandidateProcess.CommandLine -match 'next(\.cmd|\.js)?\s+start|next\\dist\\bin\\next.*\sstart\s'
+  )
+}
+
 if (-not (Test-Path -LiteralPath (Join-Path $ProjectRoot ".env")) -or -not (Test-Path -LiteralPath (Join-Path $ProjectRoot ".next"))) {
   Show-Error "Dashboard belum disiapkan. Jalankan INSTALL_DASHBOARD.bat terlebih dahulu."
 }
@@ -58,13 +68,35 @@ try {
 if (Test-Path -LiteralPath $PidFile) {
   $ExistingPid = [int](Get-Content -LiteralPath $PidFile -ErrorAction SilentlyContinue)
   $ExistingProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $ExistingPid" -ErrorAction SilentlyContinue
-  if ($ExistingProcess -and $ExistingProcess.Name -eq "node.exe" -and $ExistingProcess.CommandLine -like "*$ProjectRoot*") {
-    $ExistingPort = if (Test-Path -LiteralPath $PortFile) { [int](Get-Content -LiteralPath $PortFile) } else { 3210 }
-    Start-Process "http://localhost:$ExistingPort/dashboard"
-    exit 0
+  if (Test-OwnDashboardProcess $ExistingProcess) {
+    $ExistingConnection = Get-NetTCPConnection -OwningProcess $ExistingPid -State Listen -ErrorAction SilentlyContinue |
+      Where-Object { $_.LocalPort -ge 3210 -and $_.LocalPort -le 3219 } |
+      Select-Object -First 1
+    if ($ExistingConnection) {
+      [IO.File]::WriteAllText($PortFile, [string]$ExistingConnection.LocalPort)
+      Start-Process "http://localhost:$($ExistingConnection.LocalPort)/dashboard"
+      exit 0
+    }
   }
   Remove-Item -LiteralPath $PidFile -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $PortFile -Force -ErrorAction SilentlyContinue
+}
+
+# Pulihkan PID bila file penanda pernah terhapus, tetapi proses dari folder ini
+# masih hidup. Proses dashboard dari folder lain tidak pernah diambil alih.
+$RecoveredProcess = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
+  Where-Object { Test-OwnDashboardProcess $_ } |
+  Select-Object -First 1
+if ($RecoveredProcess) {
+  $RecoveredConnection = Get-NetTCPConnection -OwningProcess $RecoveredProcess.ProcessId -State Listen -ErrorAction SilentlyContinue |
+    Where-Object { $_.LocalPort -ge 3210 -and $_.LocalPort -le 3219 } |
+    Select-Object -First 1
+  if ($RecoveredConnection) {
+    [IO.File]::WriteAllText($PidFile, [string]$RecoveredProcess.ProcessId)
+    [IO.File]::WriteAllText($PortFile, [string]$RecoveredConnection.LocalPort)
+    Start-Process "http://localhost:$($RecoveredConnection.LocalPort)/dashboard"
+    exit 0
+  }
 }
 
 function Test-Port([int]$CandidatePort) {
@@ -76,20 +108,9 @@ function Test-Port([int]$CandidatePort) {
   finally { $Client.Dispose() }
 }
 
-function Test-SalesDashboard([int]$CandidatePort) {
-  try {
-    $Response = Invoke-WebRequest -Uri "http://127.0.0.1:$CandidatePort/api/analytics" -UseBasicParsing -TimeoutSec 5
-    return $Response.StatusCode -eq 200 -and $Response.Content -match '"filters"'
-  } catch { return $false }
-}
-
 $Port = 0
 foreach ($CandidatePort in 3210..3219) {
   if (Test-Port $CandidatePort) {
-    if (Test-SalesDashboard $CandidatePort) {
-      Start-Process "http://localhost:$CandidatePort/dashboard"
-      exit 0
-    }
     continue
   }
   $Port = $CandidatePort
